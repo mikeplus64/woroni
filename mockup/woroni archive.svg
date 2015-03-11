@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="14.266502"
+   height="14.266502"
+   viewBox="0 0 14.266502 14.266503"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.91 r13725"
+   sodipodi:docname="woroni archive.svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="32"
+     inkscape:cx="9.9329541"
+     inkscape:cy="6.8971766"
+     inkscape:document-units="px"
+     inkscape:current-layer="g4550"
+     showgrid="false"
+     units="px"
+     showguides="false"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0"
+     inkscape:window-width="1920"
+     inkscape:window-height="1034"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-505.25719,-664.43737)">
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:17.90753746px;line-height:125%;font-family:Sans;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="-216.14384"
+       y="289.20245"
+       id="text3348"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         id="tspan3350"
+         x="-216.14384"
+         y="289.20245" /></text>
+    <g
+       id="g4314"
+       transform="matrix(0.58089557,0,0,0.58089557,214.38925,288.83101)" />
+    <g
+       id="g4430"
+       transform="matrix(-1.4922948,0,0,1.4922948,1275.9287,-330.61073)">
+      <g
+         transform="translate(-2.1298249e-5,-3.0052037)"
+         id="g4362-0" />
+    </g>
+    <g
+       id="g4550">
+      <circle
+         r="6.6332512"
+         cy="671.57062"
+         cx="512.39044"
+         id="path4360"
+         style="color:#000000;display:inline;overflow:visible;visibility:visible;opacity:0.95;fill:#ffffff;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;marker:none;enable-background:accumulate" />
+      <text
+         transform="scale(1.0039683,0.99604738)"
+         sodipodi:linespacing="125%"
+         id="text3344"
+         y="678.82666"
+         x="505.10123"
+         style="font-style:normal;font-weight:normal;font-size:1.53076792px;line-height:125%;font-family:Sans;letter-spacing:0px;word-spacing:0px;opacity:0.95;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         xml:space="preserve"><tspan
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:11.48075867px;font-family:'Bodoni SvtyTwo ITC TT';-inkscape-font-specification:'Bodoni SvtyTwo ITC TT';fill:#000000;fill-opacity:1"
+           y="678.82666"
+           x="505.10123"
+           id="tspan3346"
+           sodipodi:role="line">W</tspan></text>
+    </g>
+  </g>
+</svg>
