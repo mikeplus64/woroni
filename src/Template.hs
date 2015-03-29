@@ -7,7 +7,10 @@ import Heist.Compiled.LowLevel
 import Snap
 import Snap.Snaplet.PostgresqlSimple (liftPG)
 
+import Control.Applicative
 import Control.Lens
+import Control.Monad.Trans
+
 import Data.Foldable
 import Data.IORef
 import Data.List

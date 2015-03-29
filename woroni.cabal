@@ -31,14 +31,15 @@ executable woroni
                      , postgresql-simple
                      , template-haskell
                      , heist
-                     , snap
+                     , snap == 0.14.*
                      , snaplet-postgresql-simple
-                     , snaplet-recaptcha
+                     , snaplet-recaptcha >= 1.0.3
                      , snap-core
                      , mtl
                      , transformers
                      , blaze-builder
                      , blaze-html
                      , old-locale
+
   hs-source-dirs:      src
   default-language:    Haskell2010

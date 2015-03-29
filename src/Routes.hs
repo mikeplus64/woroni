@@ -14,6 +14,7 @@ import Snap.Snaplet.Session.SessionManager
 import Snap.Util.FileServe
 import Snap.Util.Readable
 
+import Control.Applicative
 import Control.Lens
 
 import DB
@@ -30,22 +31,20 @@ routes :: [(ByteString, H ())]
 routes =
   [ ("/post/:id", method GET  (setPostFromId >> render "post")
              <|>  method POST (withCaptcha
-                   (writeBS "Bad captcha, sorry!")
-                   (do pid  <- getId "id"
-                       addr <- getsRequest rqRemoteAddr
-                       name <- getPostParam "name"
-                       Just content <- fmap decodeUtf8 <$> getPostParam "content"
-                       let author = createAuthor
-                                    (fmap decodeUtf8 (if name == Just ""
-                                                      then Nothing
-                                                      else name))
-                                    (Inet addr)
-                                    Nothing
-                       liftPG $ \db ->
-                         addComment db author pid content
-                       here <- getsRequest rqPathInfo
-                       redirect here)
-                  )
+      (writeBS "Bad captcha, sorry!")
+      (do pid  <- getId "id"
+          addr <- getsRequest rqRemoteAddr
+          name <- getPostParam "name"
+          Just content <- fmap decodeUtf8 <$> getPostParam "content"
+          let author = createAuthor
+                       (fmap decodeUtf8 (if name == Just ""
+                                         then Nothing
+                                         else name))
+                       (Inet addr)
+                       Nothing
+          liftPG $ \db -> addComment db author pid content
+          here <- getsRequest rqPathInfo
+          redirect here))
     )
 
   , ("/comment/:id/", do
