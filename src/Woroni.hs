@@ -34,12 +34,11 @@ import qualified Data.Text                as T
 import qualified Data.Vector              as V
 
 import Data.IORef
-
-import Types
+import DB
 
 data View
-  = Post    !(LPost)
-  | Comment !(LComment)
+  = PostView    !Post
+  | CommentView !Comment
   | Submit
   | Search !Query
   | Home
@@ -66,4 +65,6 @@ instance HasHeist Woroni where heistLens = subSnaplet heist
 instance HasPostgres (Handler b Woroni) where
   getPostgresState        = view (postgres.snapletValue)
   setLocalPostgresState a = local (postgres.snapletValue .~ a)
+
+instance HasReCaptcha Woroni where captchaLens = subSnaplet captcha
 

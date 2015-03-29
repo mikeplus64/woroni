@@ -84,6 +84,7 @@ article {
     float: left;
     width: 720px;
     background-color: white;
+    margin-bottom: 200px;
 }
 
 article h1 {
@@ -217,4 +218,84 @@ aside h2 { font: italic 0.8em "Georgia"; }
     border-bottom: 1px dashed #eee;
     font-size: 1em;
     white-space: pre-line;
+}
+
+/* Comment submission form */
+#comment-submit {
+    margin-top: 5px;
+    border-top: 1px dotted #ccc;
+    display: block;
+    width: 100%;
+}
+
+#submit-name, #submit-email, #submit-field {
+    font-family: Georgia;
+    border: none;
+    background-color: #f9f9f9;
+    color: #222;
+}
+
+#submit-name:focus, #submit-email:focus, #submit-field:focus {
+    background-color: #efe;
+}
+
+#submit-name {
+}
+
+#submit-name, #submit-email {
+    font-size: 0.9em;
+    font-style: italic;
+    display: block;
+}
+
+#submit-name { float: left; width: 50%; }
+#submit-email { float: right; width: 50%; }
+
+#submit-field {
+    display: block;
+    border-top: 1px dotted #ccc;
+    width: 100%;
+    resize: vertical;
+}
+
+/* Captcha styling */
+.g-recaptcha, .g-captcha div, .g-captcha div div {
+    margin: auto;
+    width: 304px;
+    height: 78px;
+}
+
+#submit, #verify {
+    width: 100%;
+    font-weight: bold;
+    font-family: sans-serif;
+    font-size: 0.9em;
+    background-color: black;
+    border: none;
+    float: right;
+    color: #eee;
+    text-align: center;
+    display: block;
+    height: 2em !important;
+    line-height: 2em !important;
+    padding: 0;
+    margin: 0;
+}
+
+#not-a-captcha-placeholder-i-promise-govna {
+    width: 100%;
+    height: 108px;
+    display: block;
+}
+
+#captcha {
+    display: none;
+    background-color: black;
+    width: 100%;
+    height: 108px;
+}
+
+#verify:hover, #submit:hover {
+    background-color: #444;
+    cursor: pointer;
 }

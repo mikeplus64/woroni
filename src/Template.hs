@@ -17,7 +17,7 @@ import qualified Data.Text     as T
 import           Data.Time
 import           System.Locale
 
-import Types
+import DB
 import Woroni
 
 templates :: SpliceConfig H
@@ -34,7 +34,7 @@ spliceFrom toText f = pureSplice
 --------------------------------------------------------------------------------
 -- Comment splices
 
-commentBy :: ((LComment -> T.Text) -> v) -> Splices v
+commentBy :: ((Comment -> T.Text) -> v) -> Splices v
 commentBy f = do
   "comment-id"      ## f (formatId . commentId)
   "comment-content" ## f commentContent
@@ -42,7 +42,7 @@ commentBy f = do
   "comment-times"   ## f (formatTimes . commentTimes)
 
 summaries :: Splice H
-summaries = do
+summaries =
   manyWithSplices
     (callTemplate "summary")
     (do let spliceSummary f = pureSplice (textSplice (f . summaryPost))
@@ -66,7 +66,7 @@ getSummariesFromView = do
   case p of
     -- if we're on a page, we want to get summaries of articles
     -- that are "around" that article
-    Post post   -> lift $ liftPG $ \pg ->
+    PostView post   -> lift $ liftPG $ \pg ->
       getSummariesAround pg (postId post)
     -- otherwise, just get the most recent ones
     Home        -> undefined
@@ -97,15 +97,15 @@ splices = do
           "post-comments" ## \rp -> manyWithSplices
             (callTemplate "comment")
             (commentBy pureText)
-            (fmap postComments rp)
+            (fmap (commentList . postComments) rp)
       )
     )
 
-    (fromView _Post)
+    (fromView _PostView)
 
   ------------------------------------------------------------------------------
   -- Comment splices for the "Comment" view - only used at /comment/:id
-  commentBy (\f -> spliceFrom f _Comment)
+  commentBy (\f -> spliceFrom f _CommentView)
 
   ------------------------------------------------------------------------------
   -- Summaries

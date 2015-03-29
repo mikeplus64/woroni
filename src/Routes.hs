@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Routes where
-import Data.ByteString (ByteString)
+import Data.ByteString    (ByteString)
+import Data.Text.Encoding (decodeUtf8)
 
 import Snap
 import Snap.Snaplet.Auth
@@ -15,29 +16,46 @@ import Snap.Util.Readable
 
 import Control.Lens
 
-import Types
+import DB
 import Woroni
 
 getId s = fmap Id $ fromBS =<< failIf "No id" (getParam s)
 
+setPostFromId = do
+  pid  <- getId "id"
+  post <- failIf "Doesn't exist" . liftPG $ \db -> getPost db pid
+  page .= PostView post
+
 routes :: [(ByteString, H ())]
 routes =
-  [ ("/post/:id", do
-        pid  <- getId "id"
-        post <- failIf "Doesn't exist" . liftPG $ \db -> getPost db pid
-        page .= Post post
-        render "post")
+  [ ("/post/:id", method GET  (setPostFromId >> render "post")
+             <|>  method POST (withCaptcha
+                   (writeBS "Bad captcha, sorry!")
+                   (do pid  <- getId "id"
+                       addr <- getsRequest rqRemoteAddr
+                       name <- getPostParam "name"
+                       Just content <- fmap decodeUtf8 <$> getPostParam "content"
+                       let author = createAuthor
+                                    (fmap decodeUtf8 (if name == Just ""
+                                                      then Nothing
+                                                      else name))
+                                    (Inet addr)
+                                    Nothing
+                       liftPG $ \db ->
+                         addComment db author pid content
+                       here <- getsRequest rqPathInfo
+                       redirect here)
+                  )
+    )
 
   , ("/comment/:id/", do
         cid     <- getId "id"
         comment <- failIf "Doesn't exist" . liftPG $ \db -> getComment db cid
-        page .= Comment comment
+        page .= CommentView comment
         render "comment")
 
   , ("/thread/:id", do
-        pid  <- getId "id"
-        post <- failIf "Doesn't exist" . liftPG $ \db -> getPost db pid
-        page .= Post post
+        setPostFromId
         render "thread")
 
   , ("/static", serveDirectory "static")

@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
   <post>
 
@@ -5,6 +6,8 @@
     <meta charset='utf-8'>
     <title> <post-title /> </title>
     <link title="woroni" rel="stylesheet" type="text/css" href="/static/woroni.css"/>
+    <script type="text/javascript" src="/static/comment_submit.js"></script>
+
   </head>
   <body>
 
@@ -21,10 +24,7 @@
           <post-content/>
         </div>
 
-        <div id="thread">
-          <h1 id="comments-title">Comments</h1>
-          <post-comments/>
-        </div>
+        <apply template="thread"/>
 
       </article>
   
