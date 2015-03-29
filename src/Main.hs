@@ -17,8 +17,9 @@ import Data.Monoid
 import Control.Lens
 import Control.Monad.Reader
 
+import DB
+import DB.Query (getAllTags)
 import Routes
-import Schema
 import Template
 import Woroni
 
@@ -27,7 +28,7 @@ main = serveSnaplet mempty $ makeSnaplet "woroni" "" Nothing $ do
   _postgres <- nestSnaplet "postgres" postgres pgsInit
   _heist    <- nestSnaplet "heist"    heist    (heistInit "")
   _captcha  <- nestSnaplet "captcha" captcha $
-               initReCaptcha' (Just _heist) ("asdf", "fdsa")
+               initReCaptcha (Just _heist)
 
   _allTags  <- liftIO $ do
     tags <- liftPG getAllTags `runReaderT` _postgres

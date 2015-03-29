@@ -21,6 +21,8 @@ CREATE TABLE author
   );
 
 CREATE UNIQUE INDEX address_idx ON author(id, address);
+CREATE UNIQUE INDEX address_idx ON author(id, name);
+CREATE UNIQUE INDEX address_idx ON author(id, email);
 
 CREATE TABLE post_to_author 
   ( post    integer  NOT NULL REFERENCES post(id) 
