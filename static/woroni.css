@@ -1,0 +1,220 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    height: 100%;
+    max-width: 960px;
+    min-width: 720px;
+    margin: 0 auto;
+}
+
+/* Navbar */
+
+header {
+    background-color: white;
+    color: black;
+}
+
+#title {
+    float: left;
+    padding: 10px 10px 10px 0px;
+    
+}
+
+nav {
+    text-align: right;
+    overflow: hidden;
+    padding: 20px 20px 4px 0px;
+    border-bottom: 1px solid black;
+}
+
+.navbutton {
+    position: relative;
+    top: -5px;
+    padding: 0 20px;
+    font-family: "Apple Garamond", "Georgia", "FreeSerif", serif;
+    text-decoration: none;
+    color: black;
+    font-size: 15pt;
+    vertical-align: middle;
+}
+
+.navbutton img {
+    vertical-align: middle;
+    width: 32px;
+    height: 32px;
+}
+
+/* Main content */
+
+figure img {
+    width: 100%;
+}
+
+figure {
+    position: relative;
+    background-color: black;
+    margin: 0;
+}
+
+figcaption {
+    padding: 8px;
+    color: white;
+}
+
+.credit {
+    position: absolute;
+    top: 0;
+    text-align: right;
+    font-style: italic;
+    color: white;
+    opacity: 0.5;
+    text-shadow: 0px 1px black 10px;
+}
+
+#post-content {
+    white-space: pre-line;
+    text-align: justify;
+    font: 1em "Georgia";
+}
+
+article {
+    float: left;
+    width: 720px;
+    background-color: white;
+}
+
+article h1 {
+    font: 2.5em "Georgia";
+    font-style: italic;
+    text-align: center;
+    padding: 0px 0px 5px 0px;
+    margin: 0px 0px 5px 0px;
+    border-bottom: 1px dashed #ccc;
+}
+
+#comments-title {
+    font: 1.2em "Georgia";
+    font-style: italic;
+    text-align: center;
+    padding: 5px 0px 0px 0px;
+    margin: 0px 0px 0px 0px;
+    border-bottom: none;
+}
+
+.description {
+    font: 0.8em "Georgia";
+    font-style: italic;
+    text-align: center;
+    padding: 0px 0px 5px 0px;
+}
+
+article time {
+    text-align: center;
+    font: bold 12pt "Georgia";
+    padding: 0px 0px 0px 0px;
+    display: block;
+}
+
+article a {
+    text-decoration: none;
+    color: #23a;
+}
+
+article p {
+    font: 1.05em "Georgia";
+    text-align: justify;
+    margin-top: 1em;
+}
+
+aside {
+    float: right;
+    width: 220px;
+    margin: 0;
+    background-color: white;
+}
+
+.summary, .summary-selected {
+    display: block;
+    text-decoration: none;
+    color: black;
+    padding-bottom: 10px;
+    padding-top: 10px;
+    border-bottom: 1px dashed #ccc;
+    font-family: "Georgia";
+}
+
+aside h1 { font: italic 700 1em "Georgia"; }
+aside h2 { font: italic 0.8em "Georgia"; }
+
+.summary .fragment {
+    margin-top: 10px;
+    text-align: justify;
+    font-size: 0.8em;
+}
+
+.summary-selected {
+    background-color: #efe;
+}
+
+
+.summary-selected .fragment {
+    display: none !important;
+}
+
+#tags .tag {
+    line-height: 20px;
+    background-color: #eee;
+    padding: 3px;
+    color: black;
+
+    font-family: sans-serif;
+    font-size: 0.7em;
+
+    margin: 0 2px;
+
+    text-decoration: none;
+}
+
+#tags .selected {
+    background-color: #efe;
+    border: 1px solid green;
+    padding: 2px;
+}
+
+.comment {
+    border-top: 1px dashed #ccc;
+    padding: 2px;
+    margin: 2px 0;
+}
+
+.comment:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+#thread {
+}
+
+.comment-author {
+    float: right;
+    position: relative;
+    font-style: italic;
+    font-size: 0.8em;
+    top: 2px;
+}
+
+.comment-id {
+    float: left;
+    position: relative;
+    font-style: monospace;
+    font-size: 0.9em;
+    top: 2px;
+}
+
+.comment-content {
+    border-bottom: 1px dashed #eee;
+    font-size: 1em;
+    white-space: pre-line;
+}
