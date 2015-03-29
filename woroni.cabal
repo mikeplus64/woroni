@@ -20,19 +20,19 @@ executable woroni
   ghc-options: -Wall -O2
   -- other-modules:       
   other-extensions:    DataKinds, DeriveDataTypeable, GADTs, GeneralizedNewtypeDeriving, NamedFieldPuns, OverloadedStrings, PolyKinds, QuasiQuotes, RecordWildCards, TemplateHaskell, TypeFamilies, DeriveGeneric, TypeOperators
-  build-depends:       base
-                     , lens
-                     , text
-                     , time
-                     , vector
+  build-depends:       base == 4.7.*
+                     , lens == 4.8.*
+                     , text == 1.2.*
+                     , time 
+                     , vector == 0.10.*
                      , aeson
                      , bytestring
                      , postgresql-query
                      , postgresql-simple
                      , template-haskell
-                     , heist
-                     , snap == 0.14.*
-                     , snaplet-postgresql-simple
+                     , heist >= 0.14
+                     , snap >= 0.14
+                     , snaplet-postgresql-simple >= 0.6.0.1
                      , snaplet-recaptcha >= 1.0.3
                      , snap-core
                      , mtl
