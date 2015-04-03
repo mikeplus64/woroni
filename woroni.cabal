@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 executable woroni
   main-is:             Main.hs 
-  ghc-options: -Wall -O2
+  ghc-options: -Wall -O2 -threaded
   -- other-modules:       
   other-extensions:    DataKinds, DeriveDataTypeable, GADTs, GeneralizedNewtypeDeriving, NamedFieldPuns, OverloadedStrings, PolyKinds, QuasiQuotes, RecordWildCards, TemplateHaskell, TypeFamilies, DeriveGeneric, TypeOperators
   build-depends:       base == 4.7.*
