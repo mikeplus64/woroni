@@ -28,6 +28,7 @@ executable woroni
                      , aeson
                      , bytestring
                      , postgresql-simple
+                     , postgresql-query
                      , template-haskell
                      , heist >= 0.14
                      , snap >= 0.14
