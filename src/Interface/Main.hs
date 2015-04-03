@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Interface.Main where
-import qualified Data.Text    as T
-import qualified Data.Text.IO as T
+import           Control.Monad.Reader
+import qualified Data.Text                     as T
+import qualified Data.Text.IO                  as T
+import           Database.PostgreSQL.Simple
+import           Snap.Snaplet.PostgresqlSimple
 
 import DB.Query
 import DB.Schema
@@ -27,24 +30,27 @@ pandoc i = do
          , "--html-q-tags"
          ]
 
+initDB :: IO Connection
+initDB = connect defaultConnectInfo{connectUser = "mike",connectDatabase="woroni"}
+
 main :: IO ()
 main = do
+  db   <- initDB
+  let withDB f = runReaderT f (PostgresConn db)
   opts <- getArgs
-
   case opts of
     "new":"post":"in":stags:"by":said:[] -> do
       let tags = map Id (read stags)
           aids = map Id (read said)
 
-      db      <- initDB
+
       title   <- T.getLine
       content <- pandoc =<< T.getContents
-      pid     <- addPost db tags aids title content
+      pid     <- withDB $ addPost tags aids title content
       print pid
 
     "new":"author":name:email:[] -> do
-      db  <- initDB
-      aid <- addAuthor db (T.pack name) (Inet "127.0.0.1") (Just (T.pack email))
+      aid <- withDB $ addAuthor (T.pack name) (Inet "127.0.0.1") (Just (T.pack email))
       print aid
 
     _ -> return ()
