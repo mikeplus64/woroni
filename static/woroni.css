@@ -147,7 +147,7 @@ aside {
     background-color: white;
 }
 
-aside .summary, .summary-selected {
+aside .summary, aside .summary-selected {
     display: block;
     text-decoration: none;
     color: black;
@@ -157,6 +157,11 @@ aside .summary, .summary-selected {
     padding-right: 2px;
     border-bottom: 1px dashed #ccc;
     font-family: "Georgia";
+    outline: none;
+}
+
+aside .summary:active {
+    background-color: #fafafa;
 }
 
 #home-summaries .summary {
@@ -166,23 +171,21 @@ aside .summary, .summary-selected {
     padding: 10px;
     border-bottom: 1px dashed #ccc;
     font-family: "Georgia";
-    box-shadow: 0px 2px 10px #eee;
+    box-shadow: 0px 2px 10px #f4f4f4;
     outline: none;
 }
 
-#home-summaries .summary:hover {
-    box-shadow: 0px 4px 40px #eee;
-}
-
-#home-summaries .summary:active {
-    background-color: #eee;
-}
+#home-summaries .summary:hover { box-shadow: 0px 4px 40px #eee; }
+#home-summaries .summary:active { background-color: #efe; }
 
 aside h1 { font: italic bold 1em "Georgia"; }
-aside h2 { font: italic 0.8em "Georgia"; }
+.fragment h2 {
+    font: italic 0.9em "Georgia";
+    margin-bottom: 5px;
+}
 
 .summary .fragment {
-    margin-top: 10px;
+    margin-top: 0px;
     text-align: justify;
     font-size: 0.8em;
 }
@@ -357,11 +360,7 @@ aside h2 { font: italic 0.8em "Georgia"; }
 
 #home-summaries .summary h2 {
     font: italic 0.8em "Georgia";
-    display: block;
-    margin: 10px;
     text-align: center;
-    margin: 0;
-    margin-bottom: 3px;
 }
 
 #home-summaries .summary .fragment {
