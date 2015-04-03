@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Interface.Main where
+module Main where
 import           Control.Monad.Reader
 import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as T
