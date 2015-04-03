@@ -3,7 +3,9 @@ module Interface.Main where
 import qualified Data.Text    as T
 import qualified Data.Text.IO as T
 
-import Schema
+import DB.Query
+import DB.Schema
+
 import System.Environment
 import System.IO
 import System.Process

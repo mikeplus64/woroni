@@ -30,9 +30,9 @@ main = serveSnaplet mempty $ makeSnaplet "woroni" "" Nothing $ do
   _captcha  <- nestSnaplet "captcha" captcha $
                initReCaptcha (Just _heist)
 
-  _allTags  <- liftIO $ do
-    tags <- liftPG getAllTags `runReaderT` _postgres
-    newIORef tags
+  _allTags  <- do
+    tags <- liftIO $ getAllTags `runReaderT` _postgres
+    liftIO (newIORef tags)
 
   addRoutes routes
 

@@ -75,7 +75,6 @@ figcaption {
 }
 
 #post-content {
-    white-space: pre-line;
     text-align: justify;
     font: 1em "Georgia";
 }
@@ -88,16 +87,17 @@ article {
 }
 
 article h1 {
-    font: 2.5em "Georgia";
+    font: bold 2.5em "Georgia";
+    font-weight: bold;
     font-style: italic;
     text-align: center;
-    padding: 0px 0px 5px 0px;
+    padding: 0px 0px 5px 0px; 
     margin: 0px 0px 5px 0px;
     border-bottom: 1px dashed #ccc;
 }
 
 #comments-title {
-    font: 1.2em "Georgia";
+    font: bold 1.2em "Georgia";
     font-style: italic;
     text-align: center;
     padding: 5px 0px 0px 0px;
@@ -125,9 +125,19 @@ article a {
 }
 
 article p {
-    font: 1.05em "Georgia";
+    font: 1.0em "Georgia";
     text-align: justify;
     margin-top: 1em;
+}
+
+article blockquote p {
+    font-style: italic;
+    text-align: left;
+    padding-left: 1em;
+    padding-bottom: 0px;
+    padding-top: 0px;
+    border-bottom: 1px dashed #f0f0f0;
+    border-top: 1px dashed #f0f0f0;
 }
 
 aside {
@@ -137,17 +147,38 @@ aside {
     background-color: white;
 }
 
-.summary, .summary-selected {
+aside .summary, .summary-selected {
     display: block;
     text-decoration: none;
     color: black;
     padding-bottom: 10px;
     padding-top: 10px;
+    padding-left: 2px;
+    padding-right: 2px;
     border-bottom: 1px dashed #ccc;
     font-family: "Georgia";
 }
 
-aside h1 { font: italic 700 1em "Georgia"; }
+#home-summaries .summary {
+    display: block;
+    text-decoration: none;
+    color: black;
+    padding: 10px;
+    border-bottom: 1px dashed #ccc;
+    font-family: "Georgia";
+    box-shadow: 0px 2px 10px #eee;
+    outline: none;
+}
+
+#home-summaries .summary:hover {
+    box-shadow: 0px 4px 40px #eee;
+}
+
+#home-summaries .summary:active {
+    background-color: #eee;
+}
+
+aside h1 { font: italic bold 1em "Georgia"; }
 aside h2 { font: italic 0.8em "Georgia"; }
 
 .summary .fragment {
@@ -165,24 +196,33 @@ aside h2 { font: italic 0.8em "Georgia"; }
     display: none !important;
 }
 
+#tags {
+    margin-bottom: 3px;
+}
+
 #tags .tag {
     line-height: 20px;
     background-color: #eee;
     padding: 3px;
     color: black;
-
     font-family: sans-serif;
     font-size: 0.7em;
-
     margin: 0 2px;
-
     text-decoration: none;
+    outline: none;
 }
 
 #tags .selected {
+    outline: none;
     background-color: #efe;
-    border: 1px solid green;
+    border: 1px solid #292;
     padding: 2px;
+    line-height: 20px;
+    color: black;
+    font-family: sans-serif;
+    font-size: 0.7em;
+    margin: 0 2px;
+    text-decoration: none;
 }
 
 .comment {
@@ -229,7 +269,7 @@ aside h2 { font: italic 0.8em "Georgia"; }
 }
 
 #submit-name, #submit-email, #submit-field {
-    font-family: Georgia;
+    font-family: "Georgia";
     border: none;
     background-color: #f9f9f9;
     color: #222;
@@ -298,4 +338,44 @@ aside h2 { font: italic 0.8em "Georgia"; }
 #verify:hover, #submit:hover {
     background-color: #444;
     cursor: pointer;
+}
+
+#home-summaries .summary time {
+    font-weight: bold;
+    text-align: center;
+    display: block;
+}
+
+#home-summaries .summary h1 {
+    font: bold italic 1.6em "Georgia";
+    border-bottom: 1px dashed #ccc;
+    padding-bottom: 2px;
+    display: block;
+    text-align: center;
+    margin: 10px;
+}
+
+#home-summaries .summary h2 {
+    font: italic 0.8em "Georgia";
+    display: block;
+    margin: 10px;
+    text-align: center;
+    margin: 0;
+    margin-bottom: 3px;
+}
+
+#home-summaries .summary .fragment {
+    clear: both;
+    font-size: 1em;
+    display: block;
+}
+
+#home-summaries .summary:nth-child(odd) {
+    float: left;
+    width: 47%;
+}
+
+#home-summaries .summary:nth-child(even) {
+    float: right;
+    width: 47%;
 }

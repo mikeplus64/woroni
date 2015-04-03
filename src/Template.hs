@@ -5,7 +5,7 @@ import Heist
 import Heist.Compiled
 import Heist.Compiled.LowLevel
 import Snap
-import Snap.Snaplet.PostgresqlSimple (liftPG)
+import Snap.Snaplet.PostgresqlSimple
 
 import Control.Applicative
 import Control.Lens
@@ -20,8 +20,9 @@ import qualified Data.Text     as T
 import           Data.Time
 import           System.Locale
 
-import DB
-import Woroni
+import           DB
+import qualified DB.Schema as Schema
+import           Woroni
 
 templates :: SpliceConfig H
 templates = mempty
@@ -48,10 +49,18 @@ summaries :: Splice H
 summaries =
   manyWithSplices
     (callTemplate "summary")
-    (do let spliceSummary f = pureSplice (textSplice (f . summaryPost))
+    (do let spliceSummary f = pureSplice (textSplice f)
         "summary"         ## \summaryR -> do
           contents    <- runChildren
-          isSelectedA <- pureSplice (textSplice formatSummaryTag) summaryR
+          isSelectedA <- pureSplice (textSplice formatSummaryA) $ do
+            selected  <- lift $ do
+              p <- view page
+              return $
+                (<|>) (preview (_PostView . to postId) p)
+                      (preview (_Search . to snd . to aggTop . _Just) p)
+
+            sr <- summaryR
+            return (selected, sr)
           return (isSelectedA <> contents <> yieldPureText "</a>")
 
         "summary-date"    ## spliceSummary (formatTimes . postTimes)
@@ -59,9 +68,20 @@ summaries =
         "summary-content" ## spliceSummary postContent
         "summary-title"   ## spliceSummary postTitle
         "summary-times"   ## spliceSummary (formatTimes . postTimes)
-        "summary-authors" ## spliceSummary (formatAuthors . postAuthors)
-        "summary-tags"    ## spliceSummary (T.concat . map formatTag . postTags))
+        "summary-authors" ## spliceSummary (formatSummaryAuthors . postAuthors)
+        "summary-tags"    ## spliceSummary (formatSummaryTags . postTags))
+
     (getSummariesFromView)
+
+asideAggregate :: Id Schema.Post -> Aggregate Schema.Post
+asideAggregate pid = Aggregate
+  { aggLimit   = 10
+  , aggSize    = 140
+  , aggTop     = Just pid
+  , aggTags    = Nothing
+  , aggAuthors = Nothing
+  , aggTerms   = Nothing
+  }
 
 getSummariesFromView :: RuntimeSplice H [Summary]
 getSummariesFromView = do
@@ -69,13 +89,22 @@ getSummariesFromView = do
   case p of
     -- if we're on a page, we want to get summaries of articles
     -- that are "around" that article
-    PostView post   -> lift $ liftPG $ \pg ->
-      getSummariesAround pg (postId post)
+    PostView post ->
+      lift $ getSummaries (asideAggregate (postId post))
+
     -- otherwise, just get the most recent ones
-    Home        -> undefined
+    Home        ->  lift $
+      getSummaries Aggregate
+        { aggLimit   = 10
+        , aggSize    = 320
+        , aggTop     = Nothing
+        , aggTags    = Nothing
+        , aggAuthors = Nothing
+        , aggTerms   = Nothing
+        }
     -- or, oh boy, this is exciting ...
-    Search q    -> undefined
-    _           -> return []
+    Search _ agg  -> lift (getSummaries agg)
+    _             -> return []
 
 fromView :: Traversal' View a -> RuntimeSplice H a
 fromView v = do
@@ -93,10 +122,10 @@ splices = do
       (do let splicePost toText = pureSplice (textSplice toText)
           "post-id"       ## splicePost (formatId . postId)
           "post-content"  ## splicePost postContent
-          "post-title"    ## splicePost postTitle
+          "page-title"    ## splicePost postTitle
           "post-times"    ## splicePost (formatTimes . postTimes)
           "post-authors"  ## splicePost (formatAuthors . postAuthors)
-          "post-tags"     ## splicePost (formatTags . postTags)
+          "post-tags"     ## splicePost (formatPostTags . postTags)
           "post-comments" ## \rp -> manyWithSplices
             (callTemplate "comment")
             (commentBy pureText)
@@ -114,6 +143,9 @@ splices = do
   -- Summaries
   "post-summaries" ## summaries
 
+  "search-name" ## pureSplice (textSplice id) $
+    Data.Foldable.fold `fmap` lift (preview (page . _Search . to fst))
+
   ------------------------------------------------------------------------------
   -- Misc
   "all-tags" ## deferMany
@@ -130,27 +162,59 @@ formatTimes :: Times -> T.Text
 formatTimes (Times c _) = T.pack (formatTime defaultTimeLocale "%B %d, %Y" c)
 
 formatAuthor :: Author -> T.Text
-formatAuthor Author{..} = authorName
+formatAuthor Author{..} =
+  "<a href='/author/" <> formatId authorId <> "'>" <> authorName <> "</a>"
+
+formatSummaryAuthor :: Author -> T.Text
+formatSummaryAuthor Author{..} =
+  "<span class='summary-author'>" <> authorName <> "</span>"
 
 formatAuthors :: [Author] -> T.Text
 formatAuthors = oxfordCommas formatAuthor
 
+formatSummaryAuthors :: [Author] -> T.Text
+formatSummaryAuthors = oxfordCommas formatSummaryAuthor
+
 formatTags :: [Tag] -> T.Text
 formatTags = oxfordCommas formatTag
 
-formatSummaryTag :: Summary -> T.Text
-formatSummaryTag (Summary s p) =
-  if s
+formatPostTags :: [Tag] -> T.Text
+formatPostTags = oxfordCommas formatPostTag
+
+formatSummaryTags :: [Tag] -> T.Text
+formatSummaryTags = oxfordCommas formatSummaryTag
+
+formatSummaryA :: (Maybe (Id Schema.Post), Summary) -> T.Text
+formatSummaryA (sel, p) =
+  if Just (postId p) == sel
   then "<a href='/post/" <> formatId (postId p) <> "' class='summary-selected'>"
   else "<a href='/post/" <> formatId (postId p) <> "' class='summary'>"
 
 formatTag :: Tag -> T.Text
 formatTag tag =
-  "<a class='tag' href='/tag/"
-  <> (formatId . tagId) tag
+  "<a onclick='update_aside(this); return false;' class='selected' "
+  <> "href='/tag/"
+  <> idBS
+  <> "'>"
+  <> "<span class='tag-id' style='display:none'>" <> idBS <> "</span>"
+  <> tagName tag
+  <> "</a>"
+ where
+  idBS = formatId (tagId tag)
+
+formatPostTag :: Tag -> T.Text
+formatPostTag tag =
+  "<a class='tag' "
+  <> "href='/tag/"
+  <> idBS
   <> "'>"
   <> tagName tag
   <> "</a>"
+ where
+  idBS = formatId (tagId tag)
+
+formatSummaryTag :: Tag -> T.Text
+formatSummaryTag tag = "<span class='summary-tag'>" <> tagName tag <> "</span>"
 
 oxfordCommas :: (a -> T.Text) -> [a] -> T.Text
 oxfordCommas _   []     = "none"

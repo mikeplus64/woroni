@@ -16,10 +16,11 @@ module DB.Types
   ) where
 
 import           Data.Aeson.TH
-import           Data.Text     (Text)
+import           Data.ByteString (ByteString)
+import           Data.Text       (Text)
 import           Data.Time
-import           DB.Schema     (Id (..), fromId)
-import qualified DB.Schema     as Schema
+import           DB.Schema       (Id (..), fromId)
+import qualified DB.Schema       as Schema
 
 data Times = Times !UTCTime !(Maybe UTCTime)
   deriving (Eq, Ord, Show)
@@ -27,13 +28,15 @@ data Times = Times !UTCTime !(Maybe UTCTime)
 deriveJSON defaultOptions ''Times
 
 data Post = Post
-  { postId       :: !(Id Schema.Post)
-  , postContent  :: !Text
-  , postTitle    :: !Text
-  , postTimes    :: !Times
-  , postTags     :: ![Schema.Tag]
-  , postAuthors  :: ![Schema.Author]
-  , postComments :: !Thread
+  { postId       :: (Id Schema.Post)
+  , postFeature  :: Bool
+  , postImage    :: (Maybe ByteString)
+  , postTitle    :: Text
+  , postContent  :: Text
+  , postTimes    :: Times
+  , postTags     :: [Schema.Tag]
+  , postAuthors  :: [Schema.Author]
+  , postComments :: Thread
   } deriving (Eq, Ord, Show)
 
 newtype Thread = Thread { commentList :: [Comment] }
@@ -46,10 +49,7 @@ data Comment = Comment
   , commentTimes   :: !Times
   } deriving (Eq, Ord, Show)
 
-data Summary = Summary
-  { summarySelected :: !Bool
-  , summaryPost     :: Post -- postComments should be []
-  }
+type Summary = Post
 
 deriveJSON defaultOptions ''Comment
 deriveJSON defaultOptions ''Thread

@@ -3,6 +3,7 @@
              RecordWildCards, TemplateHaskell, TypeFamilies #-}
 module DB.Schema where
 import Control.Applicative
+import Control.Monad
 
 import           Data.Aeson
 import           Data.Aeson.TH
@@ -13,15 +14,13 @@ import qualified Data.Text.Encoding as T
 import           Data.Time
 import           Data.Typeable
 
+import Snap.Snaplet.PostgresqlSimple
+
 import Database.PostgreSQL.Query.TH               (deriveFromRow, deriveToRow)
-import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.FromField
 import Database.PostgreSQL.Simple.SqlQQ
 import Database.PostgreSQL.Simple.ToField
 import Database.PostgreSQL.Simple.TypeInfo.Static
-
-initDB :: IO Connection
-initDB = connect defaultConnectInfo{connectUser = "mike",connectDatabase="postgres"}
 
 type Name  = Text
 type Email = Text
@@ -33,8 +32,13 @@ fromId (Id a) = a
 instance FromField (Id a) where fromField f mbs = fmap Id (fromField f mbs)
 instance ToField   (Id a) where toField (Id a) = toField a
 
+instance FromJSON ByteString where parseJSON = fmap T.encodeUtf8 . parseJSON
+instance ToJSON   ByteString where toJSON    = toJSON . T.decodeUtf8
+
 data Post = Post
   { postId      :: !(Id Post)
+  , postFeature :: !Bool
+  , postImage   :: !(Maybe ByteString)
   , postTitle   :: !Text
   , postContent :: !Text
   , postCreated :: !UTCTime
@@ -93,24 +97,24 @@ deriveJSON defaultOptions ''Tagged  ; deriveFromRow ''Tagged  ; deriveToRow ''Ta
 deriveJSON defaultOptions ''Wrote   ; deriveFromRow ''Wrote   ; deriveToRow ''Wrote
 
 class HasId a where
-  getById :: Connection -> Id a -> IO (Maybe a)
+  getById :: HasPostgres m => Id a -> m (Maybe a)
 
 instance HasId Author where
-  getById conn id' = listToMaybe `fmap` query conn
+  getById id' = listToMaybe `liftM` query
     [sql|SELECT * FROM author WHERE author.id=? LIMIT 1;|]
     (Only id')
 
 instance HasId Post where
-  getById conn id' = listToMaybe `fmap` query conn
+  getById id' = listToMaybe `liftM` query
     [sql|SELECT * FROM post WHERE post.id=? LIMIT 1;|]
     (Only id')
 
 instance HasId Comment where
-  getById conn id' = listToMaybe `fmap` query conn
+  getById id' = listToMaybe `liftM` query
     [sql|SELECT * FROM comment WHERE comment.id=? LIMIT 1;|]
     (Only id')
 
 instance HasId Tag where
-  getById conn id' = listToMaybe `fmap` query conn
+  getById id' = listToMaybe `liftM` query
     [sql|SELECT * FROM tag WHERE tag.id=? LIMIT 1;|]
     (Only id')

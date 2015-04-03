@@ -33,15 +33,18 @@ import qualified Blaze.ByteString.Builder as Blaze
 import qualified Data.Text                as T
 import qualified Data.Vector              as V
 
-import Data.IORef
-import DB
+import           Data.IORef
+import           DB
+import qualified DB.Schema  as Schema
 
 data View
   = PostView    !Post
   | CommentView !Comment
   | Submit
-  | Search !Query
+  | Search !T.Text !(Aggregate Schema.Post)
   | Home
+ deriving Show
+
 
 type H = Handler Woroni Woroni
 

@@ -1,30 +1,44 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Routes where
-import Data.ByteString    (ByteString)
-import Data.Text.Encoding (decodeUtf8)
+import           Data.ByteString       (ByteString)
+import qualified Data.ByteString.Char8 as B
+import           Data.Text.Encoding    (decodeUtf8)
+
+import qualified Data.Text as T
 
 import Snap
-import Snap.Snaplet.Auth
-import Snap.Snaplet.Auth.Backends.PostgresqlSimple
 import Snap.Snaplet.Heist.Compiled
 import Snap.Snaplet.PostgresqlSimple
 import Snap.Snaplet.ReCaptcha
-import Snap.Snaplet.Session.Backends.CookieSession
-import Snap.Snaplet.Session.SessionManager
 import Snap.Util.FileServe
 import Snap.Util.Readable
 
+import Data.Aeson (decode, encode)
+
 import Control.Applicative
 import Control.Lens
+import Control.Monad.Trans
 
 import DB
+import Template
 import Woroni
 
+getId :: MonadSnap m => ByteString -> m (Id a)
 getId s = fmap Id $ fromBS =<< failIf "No id" (getParam s)
 
+getIds :: MonadSnap m => ByteString -> m [Id a]
+getIds s = do
+  p <- failIf "No id" (getParam s)
+  case B.split ',' p of
+    [] -> fail "No id."
+    xs -> case mapM (fmap Id . fromBS) xs of
+      Just ids -> return ids
+      Nothing  -> fail "Cannot parse."
+
+setPostFromId :: H ()
 setPostFromId = do
   pid  <- getId "id"
-  post <- failIf "Doesn't exist" . liftPG $ \db -> getPost db pid
+  post <- failIf "Doesn't exist" (getPost pid)
   page .= PostView post
 
 routes :: [(ByteString, H ())]
@@ -42,14 +56,14 @@ routes =
                                          else name))
                        (Inet addr)
                        Nothing
-          liftPG $ \db -> addComment db author pid content
+          addComment author pid content
           here <- getsRequest rqPathInfo
           redirect here))
     )
 
   , ("/comment/:id/", do
         cid     <- getId "id"
-        comment <- failIf "Doesn't exist" . liftPG $ \db -> getComment db cid
+        comment <- failIf "Doesn't exist" (getComment cid)
         page .= CommentView comment
         render "comment")
 
@@ -57,8 +71,49 @@ routes =
         setPostFromId
         render "thread")
 
+  , ("/tag/:id", do
+        tids <- getIds "id"
+        json <- getQueryParam "aside"
+        case json of
+          Just pid' -> do
+            pid <- fromBS pid'
+            page .= Search "tag search" (tagsAgg (Just tids)){ aggTop = Just (Id pid) }
+            render "search"
+          Nothing  -> do
+            tags <- getTagNames tids
+            page .= Search (oxfordCommas id tags) (tagsAgg (Just tids))
+            render "tag-search"
+    )
+
+  , ("/tag/", do
+        page .= Search "All" (tagsAgg Nothing))
+
+  , ("/author/:id", do
+        aids  <- getIds "id"
+        names <- getAuthorNames aids
+        page .= Search (oxfordCommas id names) (authorsAgg (Just aids))
+        render "tag-search")
+
+  , ("/", render "home")
+
   , ("/static", serveDirectory "static")
   ]
+
+search :: Aggregate a
+search = Aggregate
+  { aggLimit   = 10
+  , aggSize    = 140
+  , aggTop     = Nothing
+  , aggTags    = Nothing
+  , aggAuthors = Nothing
+  , aggTerms   = Nothing
+  }
+
+tagsAgg :: Maybe [Id Tag] -> Aggregate a
+tagsAgg tags = search{aggTags = tags}
+
+authorsAgg :: Maybe [Id Author] -> Aggregate a
+authorsAgg authors = search{aggAuthors = authors}
 
 --------------------------------------------------------------------------------
 -- Util
