@@ -33,7 +33,7 @@ pandoc i = do
 initDB :: IO Connection
 initDB = connect defaultConnectInfo{connectUser = "mike"
                                    ,connectDatabase="woroni"
-                                   ,connectPass = "fuggen secure :DDD"}
+                                   ,connectPassword = "fuggen secure :DDD"}
 
 main :: IO ()
 main = do
