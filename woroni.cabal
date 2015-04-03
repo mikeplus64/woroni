@@ -27,7 +27,6 @@ executable woroni
                      , vector == 0.10.*
                      , aeson
                      , bytestring
-                     , postgresql-query
                      , postgresql-simple
                      , template-haskell
                      , heist >= 0.14
