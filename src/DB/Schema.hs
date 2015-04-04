@@ -38,7 +38,7 @@ instance ToJSON   ByteString where toJSON    = toJSON . T.decodeUtf8
 data Post = Post
   { postId      :: !(Id Post)
   , postFeature :: !Bool
-  , postImage   :: !(Maybe ByteString)
+  , postImage   :: !(Maybe Text)
   , postTitle   :: !Text
   , postContent :: !Text
   , postCreated :: !UTCTime

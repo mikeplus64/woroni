@@ -31,9 +31,15 @@ addAuthor name addr em = do
                 [sql|SELECT author.id FROM author
                      WHERE author.name = ? |] (Only name)
 
-addTag :: HasPostgres m => Text -> m (Maybe (Id Tag))
-addTag t = (fmap fromOnly . listToMaybe) `liftM` query
-  [sql|INSERT INTO tag VALUES(default,?) RETURNING tag.id|] (Only t)
+addTag :: HasPostgres m => Text -> m (Id Tag)
+addTag name = do
+  t <- query [sql|SELECT tag.id FROM tag WHERE tag.name = ?|] (Only name)
+  case t of
+    [Only tid] -> return tid
+    _ -> liftM (fromOnly . Prelude.head) $
+         query
+           [sql|INSERT INTO tag VALUES(default,?) RETURNING tag.id|]
+           (Only name)
 
 --------------------------------------------------------------------------------
 -- Post queries
@@ -135,12 +141,19 @@ addComment cauthor parent content =
 --------------------------------------------------------------------------------
 -- Post authoring
 
-addPost :: HasPostgres m => [Id Tag] -> [Id Author] -> Text -> Text -> m (Id Post)
-addPost tagIds authorIds title content = do
+addPost
+  :: HasPostgres m
+  => [Id Tag]
+  -> [Id Author]
+  -> Maybe Text
+  -> Text
+  -> Text
+  -> m (Id Post)
+addPost tagIds authorIds img title content = do
   [Only pid] <- query
     [sql|INSERT INTO post
-         VALUES (default,false,null,?,?,default,null)
-         RETURNING post.id|] (title,content)
+         VALUES (default,false,?,?,?,default,null)
+         RETURNING post.id|] (img,title,content)
 
   forM_ tagIds $ \tid -> execute
     [sql|INSERT INTO post_to_tag VALUES(?, ?)|] (pid, tid)

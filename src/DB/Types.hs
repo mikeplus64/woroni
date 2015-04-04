@@ -30,7 +30,7 @@ deriveJSON defaultOptions ''Times
 data Post = Post
   { postId       :: (Id Schema.Post)
   , postFeature  :: Bool
-  , postImage    :: (Maybe ByteString)
+  , postImage    :: (Maybe Text)
   , postTitle    :: Text
   , postContent  :: Text
   , postTimes    :: Times

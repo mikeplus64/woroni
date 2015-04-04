@@ -50,19 +50,76 @@ nav {
 
 /* Main content */
 
-figure img {
+.figure {
     width: 100%;
+    position: relative;
+    overflow: hidden;
+    display: block;
+    background-color: black;
 }
 
-figure {
+.figure img {
+    display: block;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+aside #summaries .fragment .summary-selected, aside .summary-selected .figure,
+aside .summary-selected time {
+    display: none;
+}
+
+aside .summary {
     position: relative;
-    background-color: black;
+    overflow: hidden;
+    padding: 0;
     margin: 0;
 }
 
-figcaption {
-    padding: 8px;
+aside .summary * {
+    padding: 0;
+    margin: 0;
+    z-index: 1;
+    position: relative;
+}
+
+aside .figure {
+    display: none;
+}
+
+/*
+aside .figure {
+    width: 100%;
+    overflow: hidden;
+    position: absolute;
+    right: 0;
+    top: 0;
+    opacity: 1;
+    background: none;
+}
+
+aside .figure img {
+    opacity: 0.2;
+    background: none;
+}
+
+aside .figure p.caption {
+    display: none;
+}
+*/
+.figure p.caption {
+    display: block;
+    position: absolute;
+    width: 100%;
+    bottom: 0;
+    padding: 0.3em;
+    background-color: rgba(0,0,0,0.7);
     color: white;
+    overflow: hidden;
+}
+
+#home-summaries .figure p.caption {
+    font-size: 0.8em;
 }
 
 .credit {
@@ -153,10 +210,10 @@ aside .summary, aside .summary-selected {
     display: block;
     text-decoration: none;
     color: black;
-    padding-bottom: 10px;
-    padding-top: 10px;
     padding-left: 2px;
     padding-right: 2px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     border-bottom: 1px dashed #ccc;
     font-family: "Georgia";
     outline: none;
@@ -183,6 +240,7 @@ aside .summary:active {
 #home-summaries .summary:active { background-color: #efe; }
 
 aside h1 { font: italic bold 1em "Georgia"; }
+
 .fragment h2 {
     font: italic 0.9em "Georgia";
     margin-bottom: 5px;

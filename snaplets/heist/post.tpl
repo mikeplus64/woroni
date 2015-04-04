@@ -7,8 +7,10 @@
     <div style="clear:both;"></div>
 
     <div id="post-content">
+      <post-image/>
       <post-content/>
     </div>
+
     <apply template="thread"/>
   </article>
   

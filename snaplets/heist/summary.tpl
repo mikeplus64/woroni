@@ -1,4 +1,5 @@
 <summary>
+  <summary-image/>
   <time> <summary-date/> </time>
   <h1> <summary-title/> </h1>
   <div class="fragment">

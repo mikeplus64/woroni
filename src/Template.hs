@@ -16,9 +16,11 @@ import Data.IORef
 import Data.List
 import Data.Monoid
 
-import qualified Data.Text     as T
-import           Data.Time
-import           System.Locale
+import qualified Data.ByteString as B
+import qualified Data.Text       as T
+
+import Data.Time
+import System.Locale
 
 import           DB
 import qualified DB.Schema as Schema
@@ -62,6 +64,7 @@ summaries =
           return (isSelectedA <> contents <> yieldPureText "</a>")
 
         "summary-date"    ## spliceSummary (formatTimes . postTimes)
+        "summary-image"   ## spliceSummary (Data.Foldable.fold . postImage)
         "summary-id"      ## spliceSummary (formatId . postId)
         "summary-content" ## spliceSummary postContent
         "summary-title"   ## spliceSummary postTitle
@@ -119,6 +122,7 @@ splices = do
     (withSplices runChildren
       (do let splicePost toText = pureSplice (textSplice toText)
           "post-id"       ## splicePost (formatId . postId)
+          "post-image"    ## splicePost (Data.Foldable.fold . postImage)
           "post-content"  ## splicePost postContent
           "page-title"    ## splicePost postTitle
           "post-times"    ## splicePost (formatTimes . postTimes)

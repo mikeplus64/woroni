@@ -1,7 +1,7 @@
 CREATE TABLE post 
   ( id           serial      PRIMARY KEY
   , feature      boolean     NOT NULL
-  , main_image   varchar 
+  , image        text        
   , title        text        NOT NULL
   , content      text        NOT NULL 
   , created      timestamptz NOT NULL DEFAULT now()
@@ -27,7 +27,7 @@ CREATE UNIQUE INDEX address_name_idx ON author(id, name);
 CREATE UNIQUE INDEX address_email_idx ON author(id, email);
 
 CREATE TABLE post_to_author 
-  ( post    integer  NOT NULL REFERENCES post(id) 
+  ( post    integer  NOT NULL REFERENCES post(id) ON DELETE CASCADE
   , author  integer  NOT NULL REFERENCES author(id) 
   );
 
@@ -42,7 +42,7 @@ CREATE UNIQUE INDEX tag_idx      ON tag(id);
 CREATE UNIQUE INDEX tag_name_idx ON tag(name);
 
 CREATE TABLE post_to_tag
-  ( post integer     NOT NULL REFERENCES post(id)
+  ( post integer     NOT NULL REFERENCES post(id) ON DELETE CASCADE
   , tag  integer     NOT NULL REFERENCES tag(id)
   );
 
@@ -59,7 +59,9 @@ CREATE TABLE comment
 
 CREATE UNIQUE INDEX id_parent_idx ON comment(id, parent);
 
-insert into post values(default, true, 'static/article_images/4.jpg', 'This is not a very long title', 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+insert into post values(default, true, null,
+'This is not a very long title',
+'<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum vitae pharetra urna. Curabitur massa odio, feugiat in vestibulum vitae, iaculis ac ipsum. Aenean molestie faucibus metus eget consectetur. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Nulla libero dui, semper a velit in, laoreet mattis felis. Duis et faucibus sem. In mattis congue magna non vestibulum. Morbi scelerisque tellus dolor, eget porta nisi fringilla id. Fusce scelerisque felis eget molestie placerat. Fusce vulputate nisl vitae lorem bibendum, in tempus lacus consectetur. Duis quis imperdiet enim, eget pharetra eros. Sed blandit erat sed est consequat, vel vestibulum nunc feugiat. Etiam blandit faucibus ipsum, a sodales leo pretium vitae. Proin lacus sem, vulputate eu hendrerit ut, viverra non ipsum. Vestibulum metus nisi, suscipit quis finibus id, porta vitae lorem. Vivamus dapibus libero et cursus faucibus.</p>
 <p>Donec dictum congue libero elementum auctor. Cras viverra velit sit amet ultricies condimentum. In porttitor velit sed enim tempor, nec fringilla purus aliquam. Sed odio ipsum, vulputate quis dui a, porta semper ex. Cras posuere mi id erat pellentesque pretium. Nulla augue eros, pharetra et ex et, venenatis laoreet sapien. Nullam tincidunt tempor augue, quis scelerisque massa feugiat ac. Donec varius finibus leo, porttitor aliquet justo congue eu. In hac habitasse platea dictumst. Morbi suscipit ipsum ut justo luctus, ac molestie neque tincidunt. Proin id libero facilisis urna hendrerit ultricies. Pellentesque sit amet tempor dolor, id convallis sapien. Etiam ullamcorper ex et libero posuere, in vehicula nibh sagittis. Aliquam laoreet mauris eget arcu blandit, quis venenatis diam consequat. Nam finibus justo velit, nec commodo orci aliquam eu.</p>
 <p>Curabitur dapibus id elit id porttitor. Phasellus a dolor at nulla hendrerit vehicula id sit amet neque. Nullam aliquam ac velit ac lobortis. Sed elementum urna erat, eget mollis orci interdum pharetra. Cras vel tincidunt odio, sed interdum odio. Vestibulum egestas, arcu et bibendum auctor, felis nulla rutrum sem, vitae rutrum ante diam sit amet magna. Nulla posuere libero elit, eget posuere erat tempor nec. Cras quis laoreet dolor. Fusce quis venenatis arcu, eget tincidunt nulla. Nullam dignissim, massa nec finibus volutpat, quam ex vehicula sapien, sed bibendum leo lectus sit amet nunc. Proin et ipsum auctor, faucibus ex eu, ornare mi. Maecenas vitae ex fringilla, convallis ligula eget, dapibus ipsum. Nam ut dolor odio. Cras consectetur congue lobortis.</p>

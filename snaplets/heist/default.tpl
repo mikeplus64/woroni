@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset='utf-8'>
+    <meta charset='utf-8'/>
     <title> <page-title /> </title>
-    <link rel="stylesheet" type="text/css" href="/static/Serif/cmun-serif.css">
-    <link rel="stylesheet" type="text/css" href="/static/woroni.css">
+    <link rel="stylesheet" type="text/css" href="/static/Serif/cmun-serif.css"/>
+    <link rel="stylesheet" type="text/css" href="/static/woroni.css"/>
     <script type="text/javascript" src="/static/jquery.js"></script>
     <script type="text/javascript" src="/static/woroni.js"></script>
   </head>
