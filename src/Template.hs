@@ -53,11 +53,9 @@ summaries =
         "summary"         ## \summaryR -> do
           contents    <- runChildren
           isSelectedA <- pureSplice (textSplice formatSummaryA) $ do
-            selected  <- lift $ do
-              p <- view page
-              return $
-                (<|>) (preview (_PostView . to postId) p)
-                      (preview (_Search . to snd . to aggTop . _Just) p)
+            selected  <- lift . preview $
+              page . (_Search . to snd . to aggTop . _Just `failing`
+                      _PostView . to postId)
 
             sr <- summaryR
             return (selected, sr)
