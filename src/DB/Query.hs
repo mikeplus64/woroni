@@ -31,6 +31,10 @@ addAuthor name addr em = do
                 [sql|SELECT author.id FROM author
                      WHERE author.name = ? |] (Only name)
 
+addTag :: HasPostgres m => Text -> m (Maybe (Id Tag))
+addTag t = (fmap fromOnly . listToMaybe) `liftM` query
+  [sql|INSERT INTO tag VALUES(default,?) RETURNING tag.id|] (Only t)
+
 --------------------------------------------------------------------------------
 -- Post queries
 

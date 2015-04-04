@@ -9,9 +9,9 @@ import           Snap.Snaplet.PostgresqlSimple
 import DB.Query
 import DB.Schema
 
-import System.Environment
-import System.IO
-import System.Process
+import           System.Environment
+import qualified System.IO          as IO
+import           System.Process
 
 pandoc :: T.Text -> IO T.Text
 pandoc i = do
@@ -20,8 +20,8 @@ pandoc i = do
     , std_out = CreatePipe
     }
   T.hPutStr stdin i
-  hFlush stdin
-  hClose stdin
+  IO.hFlush stdin
+  IO.hClose stdin
   out <- T.hGetContents stdout
   terminateProcess p
   return out
@@ -34,17 +34,22 @@ initDB :: IO Connection
 initDB = connect defaultConnectInfo{connectUser = "mike"
                                    ,connectDatabase="woroni"
                                    ,connectPassword = "fuggen secure :DDD"}
-
 main :: IO ()
 main = do
   db   <- initDB
-  let withDB f = runReaderT f (PostgresConn db)
+  let
+    withDB :: ReaderT Postgres IO a -> IO a
+    withDB f = runReaderT f (PostgresConn db)
+
   opts <- getArgs
   case opts of
+    "new":"tag":name:[] -> do
+      print =<< withDB (addTag (T.pack name))
+
+
     "new":"post":"in":stags:"by":said:[] -> do
       let tags = map Id (read stags)
           aids = map Id (read said)
-
 
       title   <- T.getLine
       content <- pandoc =<< T.getContents
@@ -52,7 +57,11 @@ main = do
       print pid
 
     "new":"author":name:email:[] -> do
-      aid <- withDB $ addAuthor (T.pack name) (Inet "127.0.0.1") (Just (T.pack email))
+      aid <- withDB $ addAuthor
+             (T.pack name)
+             (Inet "127.0.0.1")
+             (Just (T.pack email))
+
       print aid
 
     _ -> return ()
