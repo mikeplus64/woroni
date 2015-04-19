@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
@@ -22,73 +23,84 @@ module Woroni.Backend where
 import qualified Data.Aeson          as JSON
 import qualified Data.Aeson.TH       as JSON
 import           Data.Char           (toLower)
-import           Data.Fixed
 import qualified Language.Haskell.TH as TH
---------------------------------------------------------------------------------
-import qualified Data.Vector as V
---------------------------------------------------------------------------------
-import System.Clock
 --------------------------------------------------------------------------------
 import Hasql
 import Hasql.Backend  hiding (Tx)
 import Hasql.Postgres
 --------------------------------------------------------------------------------
 import Woroni.Prelude
+--------------------------------------------------------------------------------
 
-deriving instance Show Unknown
+newtype Id a = Id Int32 deriving (Eq,Ord,Show,Generic,CxValue Postgres)
+fromId :: Id a -> Id'
+fromId (Id a) = a
 
-newtype Id a = Id Int
-  deriving (Eq,Ord,Show,CxValue Postgres)
+type Id' = Int32
 
 class Schema a where
   lookupId :: Id a -> Tx Postgres s (Maybe a)
   insert  :: a -> Tx Postgres s (Id a)
   schema  :: proxy a -> Tx Postgres s ()
 
-data LoadT :: (* -> *) -> Bool -> * -> * where
-  Load  :: !(m a) -> LoadT m false a
-  Got   :: !a     -> LoadT m 'True a
+data Paginate a = Paginate
+  { pbegin :: {-# UNPACK #-} !(Id a)
+  , plimit :: {-# UNPACK #-} !Int32
+  , page   :: !(Rows a)
+  } deriving (Show,Eq,Ord)
+
+data Pagination a = Page
+  { begin :: {-# UNPACK #-} !(Id a)
+  , limit :: !Int32
+  }
 
 --------------------------------------------------------------------------------
 -- Data types
 --------------------------------------------------------------------------------
 
 data Post = Post
-  { postId      :: {-# UNPACK #-} !(Id Post)
+  { postId      :: {-# UNPACK #-} !Id'
   , postFeature :: !Bool
   , postTitle   :: !Text
   , postContent :: !Text
   , postCreated :: !UTCTime
   , postUpdated :: !(Maybe UTCTime)
-  } deriving (Show,Eq,Ord)
+  } deriving (Show,Eq,Ord,Generic)
 
-data Thread = Thread
-  { post           :: !Post
-  , postAuthors    :: !(Vector Author)
-  , postTags       :: !(Vector Tag)
-  , threadComments :: !(Vector Comment)
-  }
+data Article = Article
+  { post         :: !(Row Post)
+  , postAuthors  :: !(Rows Author)
+  , postTags     :: !(Rows Tag)
+  , postComments :: !(Paginate Comment)
+  } deriving (Show,Eq,Ord)
 
 data Comment = Comment
-  { commentId      :: {-# UNPACK #-} !(Id Comment)
-  , commentParent  :: {-# UNPACK #-} !(Id Post)
-  , commentContent :: !Text
-  , commentCreated :: !UTCTime
-  , commentAuthor  :: !(Id Author)
-  , commentAddress :: !ByteString
-  } deriving (Show,Eq,Ord)
+  { commentId       :: {-# UNPACK #-} !Id'
+  , commentThreadId :: {-# UNPACK #-} !Id'
+  , commentParent   :: {-# UNPACK #-} !Id'
+  , commentContent  :: !Text
+  , commentCreated  :: !UTCTime
+  , commentAuthor   :: !Id'
+  , commentAddress  :: !ByteString
+  } deriving (Show,Eq,Ord,Generic)
 
 data Tag = Tag
-  { tagId   :: {-# UNPACK #-} !(Id Tag)
+  { tagId   :: {-# UNPACK #-} !Id'
   , tagName :: !Text
-  } deriving (Show,Eq,Ord)
+  } deriving (Show,Eq,Ord,Generic)
 
 data Author = Author
-  { authorId      :: {-# UNPACK #-} !(Id Author)
+  { authorId      :: {-# UNPACK #-} !Id'
   , authorAddress :: !ByteString
   , authorName    :: !Text
   , authorEmail   :: !(Maybe Text)
-  } deriving (Show,Eq,Ord)
+  } deriving (Show,Eq,Ord,Generic)
+
+instance CxRow Postgres Post
+instance ViaFields Post
+instance ViaFields Comment
+instance ViaFields Author
+instance ViaFields Tag
 
 instance JSON.FromJSON ByteString where
   parseJSON v = fmap encodeUtf8 (JSON.parseJSON v)
@@ -103,7 +115,6 @@ concat <$> forM
              { JSON.fieldLabelModifier =
                    fmap toLower . drop (length (TH.nameBase name))
              }
-
        json   <- JSON.deriveJSON options name
        prisms <- makePrisms name
        return (json ++ prisms))
@@ -132,6 +143,9 @@ txMode = Just (RepeatableReads, Just True)
 
 one :: Identity a -> a
 one = coerce
+
+rows :: a -> m (Rows a) -> m (Rows a)
+rows _ a = a
 
 --------------------------------------------------------------------------------
 -- Tag
@@ -168,8 +182,8 @@ instance Schema Author where
    where query = [stmt|SELECT * FROM author WHERE author.id = ? LIMIT 1|] aid
 
   insert Author{..} =
-    if authorId > Id 0
-    then authorId <$ unitEx updateAuthor
+    if authorId > 0
+    then Id authorId <$ unitEx updateAuthor
     else one <$> singleEx insertAuthor
    where
     insertAuthor :: Stmt Postgres
@@ -189,16 +203,14 @@ getPostTags pid = fmap (^.re _Tag) <$> vectorEx
   ([stmt|
     SELECT tag.* FROM tag
     JOIN post_to_tag ON tag.id = post_to_tag.tag
-    WHERE post_to_tag.post = ?
-        |] pid)
+    WHERE post_to_tag.post = ? |] pid)
 
 getPostAuthors :: Id Post -> Tx Postgres s (Vector Author)
 getPostAuthors pid = fmap (^.re _Author) <$> vectorEx
   ([stmt|
     SELECT author.* FROM author
     JOIN post_to_author ON author.id = post_to_author.author
-    WHERE post_to_author.post = ?
-        |] pid)
+    WHERE post_to_author.post = ? |] pid)
 
   {-
 loadPostAuthors :: Post -> Session Postgres IO (Vector Author)
@@ -222,30 +234,29 @@ insertPostTags Post{postId,postTags} = case postTags of
 -}
 
 newPost
-  :: [Id Author] -- ^ Authors
+  :: Pool Postgres
+  -> [Id Author] -- ^ Authors
   -> [Id Tag]    -- ^ Tags
   -> Bool        -- ^ Whether the post is a "feature" or not
   -> Text        -- ^ Title
   -> Text        -- ^ HTML content
-  -> Session Postgres IO ()
-newPost authors tags feature title content = do
-  now <- liftIO getCurrentTime
-
-  tx (Just (ReadUncommitted, Just True)) $ do
-    postId <- insert Post
-      { postId      = defaultId
+  -> IO (Id Post)
+newPost pool authors tags feature title content = do
+  now <- getCurrentTime
+  pid <- session pool $ tx (Just (ReadUncommitted, Just True)) $ do
+    pid <- insert Post
+      { postId      = fromId defaultId
       , postTitle   = title
       , postContent = content
       , postFeature = feature
       , postCreated = now
       , postUpdated = Nothing
       }
-
-    forM_ authors
-      (unitEx . [stmt|INSERT INTO post_to_author VALUES(?,?)|] postId)
-
-    forM_ tags
-      (unitEx . [stmt|INSERT INTO post_to_tag VALUES(?,?)|] postId)
+    mapM_ (unitEx . [stmt|INSERT INTO post_to_author VALUES(?,?)|] pid) authors
+    mapM_ (unitEx . [stmt|INSERT INTO post_to_tag    VALUES(?,?)|] pid) tags
+    return pid
+  print pid
+  return (either undefined id pid)
 
 instance Schema Post where
   schema _ = do
@@ -253,7 +264,6 @@ instance Schema Post where
       CREATE TABLE post
       ( id      serial  PRIMARY KEY
       , feature boolean NOT NULL
-      , summary text    NOT NULL
       , title   text    NOT NULL
       , content text    NOT NULL
       , created timestamptz NOT NULL DEFAULT now()
@@ -272,123 +282,96 @@ instance Schema Post where
       , UNIQUE(post, tag)
       )|]
 
-  lookupId pid = do
-    c <- maybeEx ([stmt|SELECT * FROM post WHERE post.id = ? LIMIT 1|] pid)
-    case c of
-      Just
-        (postId,postFeature,_postSummary :: Text
-        ,postTitle,postContent,postCreated
-        ,postUpdated) -> return (Just Post{..})
-      Nothing -> return Nothing
+  lookupId = maybeEx . [stmt|SELECT * FROM post WHERE post.id = ? LIMIT 1|]
 
-  insert p@Post{..} | postId > Id 0 = do
-    fmap (const postId) . unitEx $
-      [stmt|UPDATE post SET
-              feature = ?, summary = ?, title = ?, content = ?, updated = now()
+  insert Post{..} =
+    if postId > 0
+    then fmap (const (Id postId)) . unitEx $
+      [stmt|UPDATE post SET feature = ?, title = ?, content = ?, updated = now()
             WHERE post.id = ? |]
       postFeature
-      ("summary lol" :: Text)
       postTitle
       postContent
       postId
-
-  insert p@Post{..} | otherwise = do
-    pid <- fmap one . singleEx $
-      [stmt|INSERT INTO post VALUES(default,?,?,?,?,now(),null) RETURNING id|]
+    else fmap one . singleEx $
+      [stmt|INSERT INTO post VALUES(default,?,?,?,?,null) RETURNING id|]
       postFeature
-      ("summary lol" :: Text)
       postTitle
       postContent
-    let p' = p{postId = pid}
-    return pid
+      postCreated
 
 --------------------------------------------------------------------------------
 instance Schema Comment where
   schema _ = unitEx [stmt|
     CREATE TABLE comment
-    ( id        int         PRIMARY KEY
+    ( id        serial      PRIMARY KEY
+    , local_id  int         NOT NULL
     , parent    int         NOT NULL REFERENCES post(id)
     , content   text        NOT NULL
     , created   timestamptz NOT NULL
     , author    int         NOT NULL REFERENCES author(id)
     , address   bytea       NOT NULL
+    , UNIQUE(parent, local_id)
     ) |]
 
   insert Comment{..} =
-    if commentId > Id 0
-    then fmap (const commentId) . unitEx $
-      [stmt|UPDATE comment
-            SET parent = ?, content = ?, created = ?, author = ?, address = ?
+    if commentId > 0
+    then fmap (const (Id commentId)) . unitEx $
+      [stmt|UPDATE comment SET parent = ?, content = ?, author = ?, address = ?
             WHERE authorId = ?|]
-      commentParent commentContent commentCreated commentAuthor commentAddress
-      commentId
-    else fmap one . singleEx $
-      [stmt|INSERT INTO author VALUES(default,?,?,?,?,?) RETURNING id|]
-      commentParent commentContent commentCreated commentAuthor commentAddress
+      commentParent commentContent commentAuthor commentAddress commentId
+    else
+      fmap one . singleEx $
+        [stmt|INSERT INTO comment VALUES
+            (default,
+             (SELECT coalesce(max(local_id)+1, 0) FROM comment WHERE comment.parent = ?),
+             ?, ?, ?, ?, ?)
+            RETURNING id|]
+        commentParent
+        commentParent
+        commentContent
+        commentCreated
+        commentAuthor
+        commentAddress
+
 
   lookupId commentId = preview (_Just.re _Comment) <$> maybeEx query
    where
     query = [stmt|SELECT * FROM comment WHERE comment.id = ?|] commentId
 
 --------------------------------------------------------------------------------
--- Thread
+-- Article
 --------------------------------------------------------------------------------
 
-measure :: IO a -> IO (Fixed E12, a)
-measure f = do
-  t0 <- getTime ThreadCPUTime
-  x <- f
-  t1 <- getTime ThreadCPUTime
-  return (1.0e-9 * fromIntegral (nsec t1 - nsec t0), x)
-
-getThread :: Id Post -> Tx Postgres s (Post,
-                                       Vector Tag,
-                                       Vector (Id Author, Text))
-getThread pid = getPostAuthorsTags <$> singleEx threadQuery
- where
-  getPostAuthorsTags
-   ( postId
-   , postFeature
-   , _postSummary :: Text
-   , postTitle
-   , postContent
-   , postCreated
-   , postUpdated
-   , tagIds
-   , tagNames
-   , authorIds
-   , authorNames) = (Post{..},
-                     V.zipWith (Tag . Id) tagIds tagNames,
-                     V.zipWith ((,) . Id) authorIds authorNames
-                    )
-
-  threadQuery :: Stmt Postgres
-  threadQuery =
-    [stmt|
-     SELECT
-       post.*,
-       array_agg(tag.id),
-       array_agg(tag.name),
-       array_agg(author.id),
-       array_agg(author.name)
-     FROM post
-     JOIN post_to_tag ON post_to_tag.post = post.id
-     JOIN tag ON tag.id = post_to_tag.tag
-     JOIN post_to_author ON post_to_author.post = post.id
-     JOIN author ON author.id = post_to_author.author
-     WHERE post.id = ?
-     GROUP BY post.id |]
-    pid
-
-getThreadD :: Id Post -> Tx Postgres s (Post, Vector Tag, Vector Author)
-getThreadD pid = do
-  post    <- lookupId pid
-  tags    <- getPostTags pid
-  authors <- getPostAuthors pid
-  return (fromJust post, tags, authors)
+getArticle :: Id Post -> Pagination Comment -> Tx Postgres s Article
+getArticle pid pagination = do
+  (post,tags,authors,comments) <- singleEx
+    ([stmt|
+      SELECT
+        row(post.*)          "post",
+        array_agg(tag.*)     "tags",
+        array_agg(author.*)  "authors",
+        array_agg(comment.*) "comments"
+      FROM post
+        LEFT JOIN post_to_tag ON post_to_tag.post = post.id
+        LEFT JOIN tag         ON tag.id = post_to_tag.tag
+        LEFT JOIN post_to_author ON post_to_author.post = post.id
+        LEFT JOIN author         ON author.id = post_to_author.author
+        LEFT JOIN comment ON
+          comment.parent = post.id AND
+          comment.local_id >= ? AND comment.local_id < ?
+      WHERE post.id = ?
+      GROUP BY post.id
+          |]
+    (begin pagination)
+    (fromId (begin pagination) + limit pagination)
+    pid)
+  return $! Article post tags authors $!
+    Paginate (Id 0) 10 comments
 
 --------------------------------------------------------------------------------
 -- Utility
+--------------------------------------------------------------------------------
 
 defaultId :: Id a
 defaultId = Id (-1)
