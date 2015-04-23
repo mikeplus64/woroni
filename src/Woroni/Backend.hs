@@ -1,34 +1,53 @@
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE NamedFieldPuns             #-}
-{-# LANGUAGE NoImplicitPrelude          #-}
-{-# LANGUAGE NullaryTypeClasses         #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
-module Woroni.Backend where
+{-# LANGUAGE ConstraintKinds, DataKinds, DeriveGeneric, FlexibleContexts,
+             FlexibleInstances, GADTs, GeneralizedNewtypeDeriving,
+             MultiParamTypeClasses, MultiWayIf, NamedFieldPuns,
+             NoImplicitPrelude, NullaryTypeClasses, OverloadedStrings,
+             PolyKinds, QuasiQuotes, RankNTypes, RecordWildCards,
+             ScopedTypeVariables, StandaloneDeriving, TemplateHaskell,
+             TypeFamilies #-}
+module Woroni.Backend
+  ( Schema(..)
+  , Id(..), Id'
+    -- * Main types
+  , Post(..)
+  , Author(..)
+  , Tag(..)
+  , Comment(..)
+    -- * Posts queries
+  , Article(..)
+  , Summary(..)
+  , getArticle
+    -- * Editing
+  , newPost
+  , updatePost
+  , removePost
+    -- * Comments
+  , newComment
+  , removeComment
+    -- * Paginated things
+  , Pages(..)
+  , Page(..)
+  , MaybeId(..)
+    -- * Search
+  , postsBy
+  , postsTagged
+  , postsTaggedBy
+  , postsSearch
+    -- * Utility
+  , getPool
+  , setSchema
+  , txMode
+  , backend
+  ) where
 --------------------------------------------------------------------------------
-import qualified Data.Aeson          as JSON
-import qualified Data.Aeson.TH       as JSON
-import           Data.Char           (toLower)
-import qualified Language.Haskell.TH as TH
+import qualified Data.Text.Lazy as TL
 --------------------------------------------------------------------------------
 import Hasql
 import Hasql.Backend  hiding (Tx)
 import Hasql.Postgres
 --------------------------------------------------------------------------------
+import Woroni.Backend.Markdown
+import Woroni.Backend.Summarise (summarise)
 import Woroni.Prelude
 --------------------------------------------------------------------------------
 
@@ -40,19 +59,28 @@ type Id' = Int32
 
 class Schema a where
   lookupId :: Id a -> Tx Postgres s (Maybe a)
-  insert  :: a -> Tx Postgres s (Id a)
-  schema  :: proxy a -> Tx Postgres s ()
+  insert   :: a -> Tx Postgres s (Id a)
+  schema   :: proxy a -> Tx Postgres s ()
 
-data Paginate a = Paginate
-  { pbegin :: {-# UNPACK #-} !(Id a)
-  , plimit :: {-# UNPACK #-} !Int32
-  , page   :: !(Rows a)
-  } deriving (Show,Eq,Ord)
+data Page :: Maybe * -> * -> * where
+  Page
+    :: {-# UNPACK #-} !Int32 -- ^ offset
+    -> !(Vector a)
+    -> Page Nothing a
+  PageSrc
+    :: {-# UNPACK #-} !(Id p) -- ^ source
+    -> {-# UNPACK #-} !Int32  -- ^ offset
+    -> !(Vector a)
+    -> Page (Just p) a
 
-data Pagination a = Page
-  { begin :: {-# UNPACK #-} !(Id a)
-  , limit :: !Int32
-  }
+instance Eq a => Eq (Page p a) where
+  Page i0 a0 == Page i1 a1 = i0 == i1 && a0 == a1
+  PageSrc s0 i0 a0 == PageSrc s1 i1 a1 = s0 == s1 && i0 == i1 && a0 == a1
+  _ == _ = False
+
+instance Show a => Show (Page p a) where
+  showsPrec i (Page i0 a0) = showsPrec i (i0,a0)
+  showsPrec i (PageSrc s0 i0 a0) = showsPrec i (s0,i0,a0)
 
 --------------------------------------------------------------------------------
 -- Data types
@@ -62,62 +90,54 @@ data Post = Post
   { postId      :: {-# UNPACK #-} !Id'
   , postFeature :: !Bool
   , postTitle   :: !Text
-  , postContent :: !Text
+  , postContent :: !TL.Text
   , postCreated :: !UTCTime
   , postUpdated :: !(Maybe UTCTime)
-  } deriving (Show,Eq,Ord,Generic)
+  } deriving (Show,Eq,Generic)
 
 data Article = Article
-  { post         :: !(Row Post)
-  , postAuthors  :: !(Rows Author)
-  , postTags     :: !(Rows Tag)
-  , postComments :: !(Paginate Comment)
-  } deriving (Show,Eq,Ord)
+  { post         :: !Post
+  , postAuthors  :: !(Vector Author)
+  , postTags     :: !(Vector Tag)
+  , postComments :: !(Page (Just Post) Comment)
+  } deriving (Show,Eq)
+
+data Summary = Summary
+  { summaryPost    :: !(Row Post)
+  , summaryAuthors :: !(Rows Author)
+  , summaryTags    :: !(Rows Tag)
+  } deriving (Show,Eq,Generic)
 
 data Comment = Comment
-  { commentId       :: {-# UNPACK #-} !Id'
-  , commentThreadId :: {-# UNPACK #-} !Id'
-  , commentParent   :: {-# UNPACK #-} !Id'
-  , commentContent  :: !Text
-  , commentCreated  :: !UTCTime
-  , commentAuthor   :: !Id'
-  , commentAddress  :: !ByteString
-  } deriving (Show,Eq,Ord,Generic)
+  { commentId      :: {-# UNPACK #-} !Id'
+  , commentLocalId :: {-# UNPACK #-} !Id'
+  , commentParent  :: {-# UNPACK #-} !Id'
+  , commentContent :: !Text
+  , commentCreated :: !UTCTime
+  , commentAuthor  :: !Id'
+  , commentAddress :: !ByteString
+  } deriving (Show,Eq,Generic)
 
 data Tag = Tag
   { tagId   :: {-# UNPACK #-} !Id'
   , tagName :: !Text
-  } deriving (Show,Eq,Ord,Generic)
+  } deriving (Show,Eq,Generic)
 
 data Author = Author
-  { authorId      :: {-# UNPACK #-} !Id'
-  , authorAddress :: !ByteString
-  , authorName    :: !Text
-  , authorEmail   :: !(Maybe Text)
-  } deriving (Show,Eq,Ord,Generic)
+  { authorId    :: {-# UNPACK #-} !Id'
+  , authorName  :: !(Maybe Text)
+  , authorEmail :: !(Maybe Text)
+  } deriving (Show,Eq,Generic)
 
 instance CxRow Postgres Post
+instance CxRow Postgres Comment
+instance CxRow Postgres Summary
+instance CxRow Postgres Author
+instance CxRow Postgres Tag
 instance ViaFields Post
 instance ViaFields Comment
 instance ViaFields Author
 instance ViaFields Tag
-
-instance JSON.FromJSON ByteString where
-  parseJSON v = fmap encodeUtf8 (JSON.parseJSON v)
-
-instance JSON.ToJSON ByteString where
-  toJSON v = JSON.toJSON (decodeUtf8 v)
-
-concat <$> forM
-  [ ''Id, ''Post, ''Author, ''Comment, ''Tag ]
-  (\name -> do
-       let options = JSON.defaultOptions
-             { JSON.fieldLabelModifier =
-                   fmap toLower . drop (length (TH.nameBase name))
-             }
-       json   <- JSON.deriveJSON options name
-       prisms <- makePrisms name
-       return (json ++ prisms))
 
 --------------------------------------------------------------------------------
 -- SQL Schema
@@ -125,15 +145,8 @@ concat <$> forM
 
 getPool :: IO (Pool Postgres)
 getPool = acquirePool
-  (StringSettings "user=mike host=localhost dbname=postgres")
+  (StringSettings "user=postgres host=localhost dbname=woroni")
   (fromJust (poolSettings 8 10))
-
-setSchema :: Tx Postgres s ()
-setSchema = do
-  create Tag
-  create Author
-  create Post
-  create Comment
 
 --------------------------------------------------------------------------------
 -- Schema instances
@@ -144,25 +157,24 @@ txMode = Just (RepeatableReads, Just True)
 one :: Identity a -> a
 one = coerce
 
-rows :: a -> m (Rows a) -> m (Rows a)
-rows _ a = a
-
 --------------------------------------------------------------------------------
 -- Tag
 --------------------------------------------------------------------------------
 
 instance Schema Tag where
-  lookupId tid = preview (_Just.re _Tag) <$>
-    maybeEx ([stmt|SELECT * FROM tag WHERE tag.id = ? LIMIT 1|] tid)
+  schema _ = unitEx [stmt|
+    CREATE TABLE IF NOT EXISTS tag
+      ( id     serial PRIMARY KEY
+      , name   text   NOT NULL
+      , UNIQUE(id, name)
+      , UNIQUE(name)
+      )|]
+
+  lookupId = maybeEx . [stmt|SELECT * FROM tag WHERE tag.id = ? LIMIT 1|]
 
   insert (Tag _ n) = fmap one . singleEx $
     [stmt|INSERT INTO tag VALUES(default,?) RETURNING id|] n
 
-  schema _ = unitEx [stmt|
-    CREATE TABLE tag
-      ( id     serial PRIMARY KEY
-      , name   text   NOT NULL
-      )|]
 
 --------------------------------------------------------------------------------
 -- Author
@@ -171,15 +183,16 @@ instance Schema Tag where
 instance Schema Author where
   schema _ = do
     unitEx [stmt|
-      CREATE TABLE author
+      CREATE TABLE IF NOT EXISTS author
       ( id      serial   PRIMARY KEY
-      , address bytea
       , name    text
       , email   text
       )|]
+    unitEx [stmt|INSERT INTO author (id, name, email)
+                 SELECT 0, 'Anonymous', NULL
+                 WHERE NOT EXISTS (SELECT 1 FROM author WHERE id = 0)|]
 
-  lookupId aid = preview (_Just.re _Author) <$> maybeEx query
-   where query = [stmt|SELECT * FROM author WHERE author.id = ? LIMIT 1|] aid
+  lookupId = maybeEx . [stmt|SELECT * FROM author WHERE author.id = ? LIMIT 1|]
 
   insert Author{..} =
     if authorId > 0
@@ -188,80 +201,80 @@ instance Schema Author where
    where
     insertAuthor :: Stmt Postgres
     insertAuthor =
-      [stmt|INSERT INTO author VALUES(default,?,?,?) RETURNING id|]
-      authorAddress authorName authorEmail
+      [stmt|INSERT INTO author VALUES(default,?,?) RETURNING id|]
+      authorName authorEmail
 
     updateAuthor :: Stmt Postgres
     updateAuthor =
-      [stmt|UPDATE author SET address = ?, name = ?, email = ?
+      [stmt|UPDATE author SET name = ?, email = ?
             WHERE author.id = ? |]
-      authorAddress authorName authorEmail authorId
+      authorName authorEmail authorId
 
 --------------------------------------------------------------------------------
-getPostTags :: Id Post -> Tx Postgres s (Vector Tag)
-getPostTags pid = fmap (^.re _Tag) <$> vectorEx
-  ([stmt|
-    SELECT tag.* FROM tag
-    JOIN post_to_tag ON tag.id = post_to_tag.tag
-    WHERE post_to_tag.post = ? |] pid)
+removePost :: Id Post -> Maybe Text -> UTCTime -> Tx Postgres s Bool
+removePost pid reason now = do
+  mpost <- maybeEx ([stmt|DELETE FROM post WHERE id = ? RETURNING *|] pid)
+  case mpost of
+    Just Post{..} -> do
+      unitEx $ [stmt|INSERT INTO post_deleted VALUES(?, ?, ?, ?, ?) |]
+        pid postTitle postCreated now reason
+      return True
+    Nothing -> return False
 
-getPostAuthors :: Id Post -> Tx Postgres s (Vector Author)
-getPostAuthors pid = fmap (^.re _Author) <$> vectorEx
-  ([stmt|
-    SELECT author.* FROM author
-    JOIN post_to_author ON author.id = post_to_author.author
-    WHERE post_to_author.post = ? |] pid)
+updatePost
+  :: Id Post -- ^ Post to update
+  -> Text    -- ^ New title
+  -> Text    -- ^ New Markdown content
+  -> UTCTime -- ^ Update date
+  -> Tx Postgres s ()
+updatePost pid title content date = do
+  let md = renderMarkdown content
+  unitEx $ [stmt|UPDATE post SET title = ?, content = ?, updated = ?
+                 WHERE id = ?|]
+    title
+    md
+    date
+    pid
 
-  {-
-loadPostAuthors :: Post -> Session Postgres IO (Vector Author)
-loadPostAuthors Post{postAuthors = authors} = case authors of
-  Got   t -> return t
-  Load f -> tx Nothing f
+  unitEx $ [stmt|UPDATE summary SET content = ? WHERE post = ?|]
+    (summarise id md)
+    pid
 
-insertPostAuthors :: Post -> Tx Postgres s ()
-insertPostAuthors Post{postId,postAuthors} = case postAuthors of
-  Got as -> forM_ as $ \author@Author{authorId} -> do
-    aid <- if authorId > Id 0 then return authorId else insert author
-    unitEx $ [stmt|INSERT INTO post_to_author VALUES(?,?)|] postId aid
-  _      -> return ()
-
-insertPostTags :: Post -> Tx Postgres s ()
-insertPostTags Post{postId,postTags} = case postTags of
-  Got as -> forM_ as $ \tag@(Tag tagId _)-> do
-    tid <- if tagId > Id 0 then return tagId else insert tag
-    unitEx $ [stmt|INSERT INTO post_to_tag VALUES(?,?)|] postId tid
-  _      -> return ()
--}
+  unitEx $ [stmt|UPDATE post_original_markdown SET markdown = ? WHERE post = ?|]
+    content
+    pid
 
 newPost
-  :: Pool Postgres
-  -> [Id Author] -- ^ Authors
+  :: [Id Author] -- ^ Authors
   -> [Id Tag]    -- ^ Tags
   -> Bool        -- ^ Whether the post is a "feature" or not
   -> Text        -- ^ Title
-  -> Text        -- ^ HTML content
-  -> IO (Id Post)
-newPost pool authors tags feature title content = do
-  now <- getCurrentTime
-  pid <- session pool $ tx (Just (ReadUncommitted, Just True)) $ do
-    pid <- insert Post
-      { postId      = fromId defaultId
-      , postTitle   = title
-      , postContent = content
-      , postFeature = feature
-      , postCreated = now
-      , postUpdated = Nothing
-      }
-    mapM_ (unitEx . [stmt|INSERT INTO post_to_author VALUES(?,?)|] pid) authors
-    mapM_ (unitEx . [stmt|INSERT INTO post_to_tag    VALUES(?,?)|] pid) tags
-    return pid
-  print pid
-  return (either undefined id pid)
+  -> Text        -- ^ Markdown content
+  -> UTCTime     -- ^ Insert date
+  -> Tx Postgres s (Id Post)
+newPost authors tags feature title content now = do
+  when (null tags) (fail "newPost: post must have tags")
+  pid <- insert Post
+    { postId      = fromId defaultId
+    , postTitle   = title
+    , postContent = TL.fromStrict (renderMarkdownTrusted content)
+    , postFeature = feature
+    , postCreated = now
+    , postUpdated = Nothing
+    }
+  mapM_ (unitEx . [stmt|INSERT INTO post_to_author VALUES(?,?)|] pid)
+    (case authors of
+      [] -> [Id 0] -- add anonymous
+      _  -> authors)
+  mapM_ (unitEx . [stmt|INSERT INTO post_to_tag    VALUES(?,?)|] pid) tags
+  unitEx $
+    [stmt|INSERT INTO post_original_markdown VALUES(?,?)|] pid content
+  return pid
 
 instance Schema Post where
   schema _ = do
     unitEx [stmt|
-      CREATE TABLE post
+      CREATE TABLE IF NOT EXISTS post
       ( id      serial  PRIMARY KEY
       , feature boolean NOT NULL
       , title   text    NOT NULL
@@ -270,49 +283,165 @@ instance Schema Post where
       , updated timestamptz DEFAULT null
       )|]
     unitEx [stmt|
-      CREATE TABLE post_to_author
-      ( post   int NOT NULL REFERENCES post(id)
-      , author int NOT NULL REFERENCES author(id)
+      CREATE TABLE IF NOT EXISTS summary
+      ( post    int  PRIMARY KEY REFERENCES post(id) ON DELETE CASCADE
+      , content text NOT NULL
+      , UNIQUE(post, content)
+      )|]
+    unitEx [stmt|
+      CREATE TABLE IF NOT EXISTS post_search
+      ( post     int      PRIMARY KEY REFERENCES post(id) ON DELETE CASCADE
+      , document tsvector NOT NULL
+      , UNIQUE(post, document)
+      )|]
+    unitEx [stmt|
+      CREATE TABLE IF NOT EXISTS post_to_author
+      ( post   int NOT NULL REFERENCES post(id) ON DELETE CASCADE
+      , author int NOT NULL REFERENCES author(id) ON DELETE CASCADE
       , UNIQUE(post, author)
       )|]
     unitEx [stmt|
-      CREATE TABLE post_to_tag
-      ( post   int NOT NULL REFERENCES post(id)
-      , tag    int NOT NULL REFERENCES tag(id)
+      CREATE TABLE IF NOT EXISTS post_to_tag
+      ( post   int NOT NULL REFERENCES post(id) ON DELETE CASCADE
+      , tag    int NOT NULL REFERENCES tag(id) ON DELETE CASCADE
       , UNIQUE(post, tag)
       )|]
+    unitEx [stmt|
+      CREATE TABLE IF NOT EXISTS post_deleted
+      ( post    int         PRIMARY KEY
+      , title   text        NOT NULL
+      , created timestamptz NOT NULL
+      , deleted timestamptz NOT NULL
+      , reason  text
+      )|]
+    unitEx [stmt|
+      CREATE OR REPLACE FUNCTION post_document(md post_original_markdown)
+          RETURNS tsvector AS $$
+        SELECT to_tsvector('english',
+          string_agg(tag.name, ' ') || ' ' ||
+          string_agg(author.name, ' ') || ' ' ||
+          post.title || ' ' ||
+          md.markdown )
+        FROM post
+          JOIN post_to_author ON post_to_author.post = md.post
+          JOIN author         ON author.id = post_to_author.author
+          JOIN post_to_tag ON post_to_tag.post = md.post
+          JOIN tag         ON tag.id = post_to_tag.tag
+        WHERE post.id = md.post
+        GROUP BY post.id
+      $$ LANGUAGE 'sql' STABLE |]
+    -- Search update/insert rules; delete is handled already
+    -- Note we can't just make Postgres rules for summaries since we need to
+    -- render parse the HTML somehow
+    unitEx [stmt|
+      CREATE OR REPLACE RULE search_ins AS ON INSERT TO post_original_markdown DO
+        INSERT INTO post_search VALUES(NEW.post, (SELECT post_document(NEW)))|]
+
+    unitEx [stmt|
+      CREATE OR REPLACE RULE search_upd AS ON UPDATE TO post_original_markdown DO
+        UPDATE post_search SET document = (SELECT post_document(NEW))
+        WHERE post_search.post = NEW.post |]
 
   lookupId = maybeEx . [stmt|SELECT * FROM post WHERE post.id = ? LIMIT 1|]
 
   insert Post{..} =
     if postId > 0
-    then fmap (const (Id postId)) . unitEx $
-      [stmt|UPDATE post SET feature = ?, title = ?, content = ?, updated = now()
-            WHERE post.id = ? |]
-      postFeature
-      postTitle
-      postContent
-      postId
-    else fmap one . singleEx $
-      [stmt|INSERT INTO post VALUES(default,?,?,?,?,null) RETURNING id|]
-      postFeature
-      postTitle
-      postContent
-      postCreated
+    then do
+      unitEx $
+        [stmt|UPDATE post SET feature = ?, title = ?, content = ?, updated = now()
+              WHERE post.id = ? |]
+        postFeature
+        postTitle
+        postContent
+        postId
+      unitEx $
+        [stmt|UPDATE summary SET content = ? WHERE post = ?|]
+        (summarise TL.toStrict postContent)
+        postId
+      return (Id postId)
+    else do
+      pid <- one <$> singleEx
+        ([stmt|INSERT INTO post VALUES(default,?,?,?,?,null) RETURNING id|]
+         postFeature
+         postTitle
+         postContent
+         postCreated)
+      unitEx
+        ([stmt|INSERT INTO summary VALUES(?, ?)|]
+         pid
+         (summarise TL.toStrict postContent))
+      return pid
 
 --------------------------------------------------------------------------------
+
+newComment
+  :: Id Post
+  -> Maybe Text
+  -> Maybe Text
+  -> Text
+  -> ByteString
+  -> UTCTime
+  -> Tx Postgres s (Id Comment)
+newComment pid name email content addr now = do
+  aid <- case name of
+    Just n -> insert Author
+      { authorId    = -1
+      , authorName  = Just n
+      , authorEmail = email
+      }
+    Nothing -> return (Id 0)
+  insert $ Comment
+    { commentId      = -1
+    , commentLocalId = -1
+    , commentParent  = fromId pid
+    , commentContent = renderMarkdown content
+    , commentCreated = now
+    , commentAuthor  = fromId aid
+    , commentAddress = addr
+    }
+
+removeComment
+  :: Id Comment
+  -> Maybe Text
+  -> UTCTime
+  -> Tx Postgres s Bool
+removeComment cid reason now = do
+  mcomment <- maybeEx ([stmt|DELETE FROM comment WHERE id = ? RETURNING *|] cid)
+  case mcomment of
+    Just Comment{..} -> do
+      unitEx $ [stmt|INSERT INTO comment_deleted VALUES(?, ?, ?, ?, ?, ?) |]
+        commentId
+        commentLocalId
+        commentParent
+        commentCreated
+        now
+        reason
+      return True
+    Nothing -> return False
+
 instance Schema Comment where
-  schema _ = unitEx [stmt|
-    CREATE TABLE comment
-    ( id        serial      PRIMARY KEY
-    , local_id  int         NOT NULL
-    , parent    int         NOT NULL REFERENCES post(id)
-    , content   text        NOT NULL
-    , created   timestamptz NOT NULL
-    , author    int         NOT NULL REFERENCES author(id)
-    , address   bytea       NOT NULL
-    , UNIQUE(parent, local_id)
-    ) |]
+  schema _ = do
+    unitEx [stmt|
+      CREATE TABLE IF NOT EXISTS comment
+      ( id        serial      PRIMARY KEY
+      , local_id  int         NOT NULL
+      , parent    int         NOT NULL REFERENCES post(id) ON DELETE CASCADE
+      , content   text        NOT NULL
+      , created   timestamptz NOT NULL
+      , author    int         NOT NULL REFERENCES author(id) ON DELETE CASCADE
+      , address   bytea       NOT NULL
+      , UNIQUE(parent, local_id)
+      ) |]
+    unitEx [stmt|
+      CREATE TABLE IF NOT EXISTS deleted_comment
+      ( comment   int         PRIMARY KEY
+      , local_id  int         NOT NULL
+      , parent    int         NOT NULL REFERENCES post(id) ON DELETE CASCADE
+      , created   timestamptz NOT NULL
+      , deleted   timestamptz NOT NULL
+      , reason    text
+      , UNIQUE(parent, local_id)
+      ) |]
 
   insert Comment{..} =
     if commentId > 0
@@ -322,11 +451,12 @@ instance Schema Comment where
       commentParent commentContent commentAuthor commentAddress commentId
     else
       fmap one . singleEx $
-        [stmt|INSERT INTO comment VALUES
-            (default,
-             (SELECT coalesce(max(local_id)+1, 0) FROM comment WHERE comment.parent = ?),
-             ?, ?, ?, ?, ?)
-            RETURNING id|]
+        [stmt|
+        INSERT INTO comment VALUES
+          (default,
+          (SELECT coalesce(max(local_id)+1, 0) FROM comment WHERE parent = ?),
+           ?, ?, ?, ?, ?)
+          RETURNING id|]
         commentParent
         commentParent
         commentContent
@@ -334,44 +464,235 @@ instance Schema Comment where
         commentAuthor
         commentAddress
 
-
-  lookupId commentId = preview (_Just.re _Comment) <$> maybeEx query
-   where
-    query = [stmt|SELECT * FROM comment WHERE comment.id = ?|] commentId
+  lookupId = maybeEx . [stmt|SELECT * FROM comment WHERE comment.id = ?|]
 
 --------------------------------------------------------------------------------
 -- Article
 --------------------------------------------------------------------------------
 
-getArticle :: Id Post -> Pagination Comment -> Tx Postgres s Article
-getArticle pid pagination = do
-  (post,tags,authors,comments) <- singleEx
+getArticle :: Id Post -> Tx Postgres s Article
+getArticle pid = do
+  (post,authors,tags,comments) <- singleEx
     ([stmt|
       SELECT
         row(post.*)          "post",
-        array_agg(tag.*)     "tags",
         array_agg(author.*)  "authors",
+        array_agg(tag.*)     "tags",
         array_agg(comment.*) "comments"
       FROM post
-        LEFT JOIN post_to_tag ON post_to_tag.post = post.id
-        LEFT JOIN tag         ON tag.id = post_to_tag.tag
-        LEFT JOIN post_to_author ON post_to_author.post = post.id
-        LEFT JOIN author         ON author.id = post_to_author.author
-        LEFT JOIN comment ON
-          comment.parent = post.id AND
-          comment.local_id >= ? AND comment.local_id < ?
+        JOIN post_to_author ON post_to_author.post = post.id
+        JOIN author         ON author.id = post_to_author.author
+        JOIN post_to_tag ON post_to_tag.post = post.id
+        JOIN tag         ON tag.id = post_to_tag.tag
+        LEFT JOIN (SELECT * FROM comment LIMIT 30) AS comment
+          ON comment.parent = post.id
       WHERE post.id = ?
-      GROUP BY post.id
-          |]
-    (begin pagination)
-    (fromId (begin pagination) + limit pagination)
+      GROUP BY post.id |]
     pid)
-  return $! Article post tags authors $!
-    Paginate (Id 0) 10 comments
+  return $! Article
+    (fromRow post)
+    (fromRows authors)
+    (fromRows tags) $!
+    PageSrc pid 0 (fromRows comments)
+
+--------------------------------------------------------------------------------
+-- Pages
+--------------------------------------------------------------------------------
+
+data MaybeId :: Maybe * -> * where
+  JustId :: Id a -> MaybeId (Just a)
+  NoId   :: MaybeId Nothing
+
+class Pages p a where
+  pageAt
+    :: MaybeId p -- ^ parent (maybe)
+    -> Int32     -- ^ page offset
+    -> Int32     -- ^ page size
+    -> Tx Postgres s (Vector a)
+
+instance Pages (Just Post) Comment where
+  pageAt (JustId src) offset size =
+    vectorEx $
+      [stmt|SELECT * FROM comment WHERE parent = ? ORDER BY id
+            OFFSET ? LIMIT ?
+           |] src offset size
+
+instance Pages Nothing Post where
+  pageAt _NoId offset size =
+    vectorEx $
+      [stmt|SELECT * FROM post ORDER BY id OFFSET ? LIMIT ? |] offset size
+
+--------------------------------------------------------------------------------
+-- Summaries
+--------------------------------------------------------------------------------
+
+instance Pages (Just Post) Summary where
+  pageAt (JustId (Id pid)) offset size =
+    let
+      o2 :: Int32
+      o2 = offset `div` 2
+    in vectorEx
+      ([stmt|
+       SELECT
+         row(post.id,post.feature,post.title,
+             summary.content,post.created,post.updated) "post",
+         array_agg(author.*)  "authors",
+         array_agg(tag.*)     "tags"
+       FROM summary JOIN post ON summary.post = post.id
+         JOIN post_to_author ON post_to_author.post = post.id
+         JOIN author         ON author.id = post_to_author.author
+         JOIN post_to_tag ON post_to_tag.post = post.id
+         JOIN tag         ON tag.id = post_to_tag.tag
+       WHERE post.id >= ?
+       GROUP BY summary.post, post.id
+       ORDER BY post.id DESC
+       OFFSET ?
+       LIMIT ?
+       |] (pid-o2) o2 size)
+
+instance Pages Nothing Summary where
+  pageAt _NoId offset size =
+    vectorEx
+      ([stmt|
+       SELECT
+         row(post.id,post.feature,post.title,
+             summary.content,post.created,post.updated) "post",
+         array_agg(author.*)  "authors",
+         array_agg(tag.*)     "tags"
+       FROM summary JOIN post ON summary.post = post.id
+         JOIN post_to_author ON post_to_author.post = post.id
+         JOIN author         ON author.id = post_to_author.author
+         JOIN post_to_tag ON post_to_tag.post = post.id
+         JOIN tag         ON tag.id = post_to_tag.tag
+       GROUP BY summary.post, post.id
+       ORDER BY post.id DESC
+       OFFSET ?
+       LIMIT ?
+       |] offset size)
+
+--------------------------------------------------------------------------------
+-- Search
+--------------------------------------------------------------------------------
+
+postsBy :: [Id Author] -> Int32 -> Int32 -> Tx Postgres s (Vector Summary)
+postsBy authors offset size =
+  vectorEx $
+    [stmt|
+      SELECT
+        row(post.id,post.feature,post.title,
+            summary.content,post.created,post.updated) "post",
+        array_agg(author.*)  "authors",
+        array_agg(tag.*)     "tags"
+      FROM summary JOIN post ON summary.post = post.id
+        JOIN post_to_author ON post_to_author.post = post.id
+        JOIN author ON author.id = post_to_author.author AND author.id = ANY(?)
+
+        JOIN post_to_tag ON post_to_tag.post = post.id
+        JOIN tag         ON tag.id = post_to_tag.tag
+      GROUP BY summary.post, post.id
+      ORDER BY post.id DESC
+      OFFSET ?
+      LIMIT ? |]
+    (coerce authors :: [Int32])
+    offset
+    size
+
+postsTagged :: [Id Tag] -> Int32 -> Int32 -> Tx Postgres s (Vector Summary)
+postsTagged tags offset size =
+  vectorEx $
+    [stmt|
+      SELECT
+        row(post.id,post.feature,post.title,
+            summary.content,post.created,post.updated) "post",
+        array_agg(author.*)  "authors",
+        array_agg(tag.*)     "tags"
+      FROM summary JOIN post ON summary.post = post.id
+        JOIN post_to_tag ON post_to_tag.post = post.id
+        JOIN tag         ON tag.id = post_to_tag.tag AND tag.id = ANY(?)
+        JOIN post_to_author ON post_to_author.post = post.id
+        JOIN author         ON author.id = post_to_author.author
+      ORDER BY post.id DESC
+      OFFSET ?
+      LIMIT ? |]
+    (coerce tags :: [Int32])
+    offset
+    size
+
+postsTaggedBy
+  :: [Id Author]
+  -> [Id Tag]
+  -> Int32
+  -> Int32
+  -> Tx Postgres s (Vector Summary)
+postsTaggedBy authors tags offset size =
+  let na = null authors
+      nt = null tags
+  in if
+    | na && nt  -> pageAt NoId offset size
+    | na        -> postsTagged tags offset size
+    | nt        -> postsBy authors offset size
+    | otherwise -> vectorEx $ [stmt|
+        SELECT
+          row(post.id,post.feature,post.title,
+              summary.content,post.created,post.updated) "post",
+          array_agg(author.*)  "authors",
+          array_agg(tag.*)     "tags"
+        FROM summary JOIN post ON summary.post = post.id
+          JOIN post_to_tag ON post_to_tag.post = post.id
+          JOIN tag         ON tag.id = post_to_tag.tag AND tag.id = ANY(?)
+          JOIN post_to_author ON post_to_author.post = post.id
+          JOIN author ON author.id = post_to_author.author
+                     AND author.id = ANY(?)
+        ORDER BY post.id DESC
+        OFFSET ?
+        LIMIT ? |]
+      (coerce tags :: [Int32])
+      (coerce authors :: [Int32])
+      offset
+      size
+
+postsSearch
+  :: Text
+  -> Int32
+  -> Int32
+  -> Tx Postgres s (Vector Summary)
+postsSearch terms offset size =
+  vectorEx $ [stmt|
+    SELECT
+      row(post.id,post.feature,post.title,
+          ts_headline(summary.content,
+                      to_tsquery('english',?),
+                      'HighlightAll=true,FragmentDelimiter=""'),
+          post.created,
+          post.updated) "post",
+      array_agg(author.*) "authors",
+      array_agg(tag.*)    "tags"
+    FROM post_search
+      JOIN summary ON summary.post = post_search.post
+      JOIN post    ON post.id      = post_search.post
+      JOIN post_to_tag ON post_to_tag.post = post.id
+      JOIN tag         ON tag.id           = post_to_tag.tag
+      JOIN post_to_author ON post_to_author.post = post.id
+      JOIN author         ON author.id           = post_to_author.author
+    WHERE post_search.document @@ to_tsquery('english',?)
+    GROUP BY post.id, summary.post
+    ORDER BY post.id DESC
+    OFFSET ?
+    LIMIT ? |]
+    terms
+    terms
+    offset
+    size
 
 --------------------------------------------------------------------------------
 -- Utility
 --------------------------------------------------------------------------------
+
+fromRows :: Rows a -> Vector a
+fromRows = coerce
+
+fromRow :: Row a -> a
+fromRow = coerce
 
 defaultId :: Id a
 defaultId = Id (-1)
@@ -383,3 +704,17 @@ type family Result f where
 -- | Just a stupid syntactic thing
 create :: forall f s. Schema (Result f) => f -> Tx Postgres s ()
 create _ = schema (Nothing :: Maybe (Result f))
+
+setSchema :: Tx Postgres s ()
+setSchema = do
+  create Tag
+  create Author
+  create Post
+  create Comment
+
+backend :: Pool Postgres -> (forall s. Tx Postgres s a) -> IO (Maybe a)
+backend db t = do
+  e <- session db (tx txMode t)
+  case e of
+    Right a -> return (Just a)
+    Left  a -> Nothing <$ print a

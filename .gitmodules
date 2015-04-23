@@ -1,0 +1,9 @@
+[submodule "msrc/postgresql-binary"]
+	path = msrc/postgresql-binary
+	url = git@github.com:mikeplus64/postgresql-binary.git
+[submodule "msrc/hasql"]
+	path = msrc/hasql
+	url = git@github.com:mikeplus64/hasql.git
+[submodule "msrc/hasql-postgres"]
+	path = msrc/hasql-postgres
+	url = git@github.com:mikeplus64/hasql-postgres.git
