@@ -1,19 +1,19 @@
 {-# LANGUAGE BangPatterns, GADTs, NamedFieldPuns, NoMonoLocalBinds,
              OverloadedStrings, QuasiQuotes, RankNTypes, RecordWildCards,
              ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wall #-}
 module Woroni.Template where
 --------------------------------------------------------------------------------
 import Heist
 import Heist.Compiled
-import Snap
 --------------------------------------------------------------------------------
 import           Data.Vector ((!))
 import qualified Data.Vector as V
 --------------------------------------------------------------------------------
-import Debug.Trace
 import Woroni.Application
 import Woroni.Backend.Types
 import Woroni.Prelude
+--------------------------------------------------------------------------------
 
 templates :: SpliceConfig H
 templates = mempty & scCompiledSplices  .~ splices
@@ -48,7 +48,7 @@ splices = do
           (commentList <$> postRS)
         "post-aside" ## \postRS -> manyWithSplices
           (callTemplate "summary")
-          (summarySplice id (postId . fst <$> postRS))
+          (summarySplice id (postId . post . fst <$> postRS))
           (V.toList . snd <$> postRS))
 
     (lift (view page) >>= \p -> case p of
@@ -64,29 +64,15 @@ splices = do
   "post-summaries" ##
     manyWithSplices
       (callTemplate "summary")
-      (summarySplice id undefined)
+      (summarySplice id (return (-1)))
       (lift (view page) >>= \p -> case p of
-        Search terms (Page _ vs) -> return (V.toList vs)
-        _                        -> fail "I don't know")
+        Search _ (Page _ vs) -> return (V.toList vs)
+        _                    -> fail "I don't know")
 
-
-{-
-  manyWithSplices
-    (callTemplate "summary")
-    (do fmap snd summarySplice
-        "page-title" ## pureText _
-        "summary" ## \rs -> do
-          content <- runChildren
-          tag     <- pureText (uncurry formatSummaryA) $
-            (,) Nothing
-            <$> fmap (postId . fromRow . summaryPost . snd) rs
-          return (tag <> content <> yieldPureText "</a>"))
--}
 
 commentList :: (Article, a) -> [AComment]
 commentList (p, _) = case postComments p of
   PageSrc _ _ v -> V.toList v
-  _             -> []
 
 summaryList :: (a, Vector Summary) -> [Summary]
 summaryList (_, v) = V.toList v
@@ -104,6 +90,7 @@ commentSplice f = do
 --------------------------------------------------------------------------------
 -- Summary
 
+{-# INLINE summarySplice #-}
 summarySplice
   :: forall a. (a -> Summary) -> RuntimeSplice H Id'
   -> Splices (RuntimeSplice H a -> Splice H)
@@ -113,8 +100,14 @@ summarySplice getSummary getSelected = do
     postS :: (Post -> Text) -> RuntimeSplice H a -> Splice H
     postS g = pureText (g . fromRow . summaryPost . getSummary)
 
-  "summary-id"      ## postS (formatId' . postId)
-  "summary-href"    ## postS (("/post/" <>) . formatId' . postId)
+  "summary-id"   ## postS (formatId' . postId)
+  "summary-href" ## postS (("/post/" <>) . formatId' . postId)
+  "summary-sel"  ## \summaryRS -> do
+    pureText
+      (\isSelected -> if isSelected then "selected" else "")
+      ((==) <$> getSelected
+            <*> fmap (postId . fromRow . summaryPost . getSummary) summaryRS)
+
   "summary-content" ## postS postContent
   "summary-title"   ## postS postTitle
   "summary-times"   ## postS (\p -> formatTimes (postCreated p) (postUpdated p))
@@ -123,114 +116,6 @@ summarySplice getSummary getSelected = do
 
   "summary-tags"    ## pureText
     (oxfordCommas tagName . fromRows . summaryTags . getSummary)
-
-{-
-summaries :: Splice H
-summaries =
-  manyWithSplices
-    (callTemplate "summary")
-    (do let spliceSummary f = pureSplice (textSplice f)
-        "summary"         ## \summaryR -> do
-          contents    <- runChildren
-          isSelectedA <- pureSplice (textSplice formatSummaryA) $ do
-            selected  <- lift . preview $
-              page . (_Search . to snd . to aggTop . _Just `failing`
-                      _PostView . to postId)
-            sr <- summaryR
-            return (selected, sr)
-          return (isSelectedA <> contents <> yieldPureText "</a>")
-        "summary-date"    ## spliceSummary (formatTimes . postTimes)
-        "summary-image"   ## spliceSummary (Data.Foldable.fold . postImage)
-        "summary-id"      ## spliceSummary (formatId . postId)
-        "summary-content" ## spliceSummary postContent
-        "summary-title"   ## spliceSummary postTitle
-        "summary-times"   ## spliceSummary (formatTimes . postTimes)
-        "summary-authors" ## spliceSummary (formatSummaryAuthors . postAuthors)
-        "summary-tags"    ## spliceSummary (formatSummaryTags . postTags))
-
-    (getSummariesFromView)
-
-asideAggregate :: Id Schema.Post -> Aggregate Schema.Post
-asideAggregate pid = Aggregate
-  { aggLimit   = 10
-  , aggSize    = 140
-  , aggTop     = Just pid
-  , aggTags    = Nothing
-  , aggAuthors = Nothing
-  , aggTerms   = Nothing
-  }
-
-getSummariesFromView :: RuntimeSplice H [Summary]
-getSummariesFromView = do
-  p <- lift (view page)
-  case p of
-    -- if we're on a page, we want to get summaries of articles
-    -- that are "around" that article
-    PostView post ->
-      lift $ getSummaries (asideAggregate (postId post))
-
-    -- otherwise, just get the most recent ones
-    Home        ->  lift $
-      getSummaries Aggregate
-        { aggLimit   = 10
-        , aggSize    = 320
-        , aggTop     = Nothing
-        , aggTags    = Nothing
-        , aggAuthors = Nothing
-        , aggTerms   = Nothing
-        }
-    -- or, oh boy, this is exciting ...
-    Search _ agg  -> lift (getSummaries agg)
-    _             -> return []
-
-fromView :: Traversal' View a -> RuntimeSplice H a
-fromView v = do
-  p <- lift (preview (page.v))
-  case p of
-    Just p' -> return p'
-    Nothing -> fail "Template.fromView: Can't get that view."
-
-splices :: Splices (Splice H)
-splices = do
-  ------------------------------------------------------------------------------
-  -- Post splices
-  "post" ## deferMap return
-    (withSplices runChildren
-      (do let splicePost toText = pureSplice (textSplice toText)
-          "post-id"       ## splicePost (formatId . postId)
-          "post-image"    ## splicePost (Data.Foldable.fold . postImage)
-          "post-content"  ## splicePost postContent
-          "page-title"    ## splicePost postTitle
-          "post-times"    ## splicePost (formatTimes . postTimes)
-          "post-authors"  ## splicePost (formatAuthors . postAuthors)
-          "post-tags"     ## splicePost (formatPostTags . postTags)
-          "post-comments" ## \rp -> manyWithSplices
-            (callTemplate "comment")
-            (commentBy pureText)
-            (fmap (commentList . postComments) rp)
-      )
-    )
-
-    (fromView _PostView)
-
-  ------------------------------------------------------------------------------
-  -- Comment splices for the "Comment" view - only used at /comment/:id
-  commentBy (\f -> spliceFrom f _CommentView)
-
-  ------------------------------------------------------------------------------
-  -- Summaries
-  "post-summaries" ## summaries
-
-  "search-name" ## pureSplice (textSplice id) $
-    Data.Foldable.fold `fmap` lift (preview (page . _Search . to fst))
-
-  ------------------------------------------------------------------------------
-  -- Misc
-  "all-tags" ## deferMany
-    (pureSplice (textSplice formatTag))
-    (liftIO . readIORef =<< lift (view allTags))
-
--}
 
 --------------------------------------------------------------------------------
 -- Formatters
@@ -254,28 +139,11 @@ formatAuthor aid name =
 formatAuthors :: Vector Author -> Text
 formatAuthors = oxfordCommas (\a -> formatAuthor (authorId a) (authorName a))
 
-formatSummaryAuthor :: Author -> Text
-formatSummaryAuthor Author{..} =
-  "<span class='summary author'>" <> authorName <> "</span>"
-
-formatSummaryAuthors :: Vector Author -> Text
-formatSummaryAuthors = oxfordCommas formatSummaryAuthor
-
 formatTags :: Vector Tag -> Text
 formatTags = oxfordCommas formatTag
 
 formatPostTags :: Vector Tag -> Text
 formatPostTags = oxfordCommas formatPostTag
-
-formatSummaryTags :: Vector Tag -> Text
-formatSummaryTags = oxfordCommas formatSummaryTag
-
-{-# INLINE formatSummaryA #-}
-formatSummaryA :: Maybe Id' -> Id' -> Text
-formatSummaryA sel sid =
-  if Just sid == sel
-  then "<a href='/post/" <> formatId' sid <> "' class='summary selected'>"
-  else "<a href='/post/" <> formatId' sid <> "' class='summary'>"
 
 formatTag :: Tag -> Text
 formatTag tag =
@@ -298,19 +166,16 @@ formatPostTag tag =
   <> tagName tag
   <> "</a>"
 
-formatSummaryTag :: Tag -> Text
-formatSummaryTag tag = "<span class='summary tag'>" <> tagName tag <> "</span>"
-
 oxfordCommas :: (a -> Text) -> Vector a -> Text
 oxfordCommas fmt v = case V.length v of
   0 -> "none"
   1 -> fmt (v!0)
   2 -> fmt (v!0) <> " and " <> fmt (v!1)
-  n -> loop 1 (fmt (v!0))
+  _ -> go 1 (fmt (v!0))
  where
-  loop !ix !acc
-    | ix < V.length v-1 = loop (ix+1) (acc <> ", " <> fmt (v!ix))
-    | otherwise         = acc <> ", and " <> fmt (v!ix)
+  go !i !acc
+    | i < V.length v-1 = go (i+1) (acc <> ", " <> fmt (v!i))
+    | otherwise        = acc <> ", and " <> fmt (v!i)
 
 --------------------------------------------------------------------------------
 -- Util
