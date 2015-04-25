@@ -7,6 +7,7 @@ import Control.Lens           as X hiding (coerce)
 import Control.Monad          as X hiding (forM, forM_, mapM, mapM_, msum,
                                     sequence, sequence_)
 import Control.Monad.IO.Class as X
+import Control.Monad.Trans    as X
 --------------------------------------------------------------------------------
 import Data.Coerce as X
 import Data.Monoid as X
@@ -16,11 +17,12 @@ import Data.String        as X
 import Data.Text          as X (Text)
 import Data.Text.Encoding as X (decodeUtf8, encodeUtf8)
 --------------------------------------------------------------------------------
-import Data.Int    as X
-import Data.IORef  as X
-import Data.Time   as X
-import Data.Vector as X (Vector)
-import Data.Word   as X
+import Data.Int         as X
+import Data.IORef       as X
+import Data.Time        as X
+import Data.Time.Format as X
+import Data.Vector      as X (Vector)
+import Data.Word        as X
 -------------------------------------------------------------------------------j
 import Data.Foldable    as X
 import Data.Functor     as X
@@ -32,5 +34,5 @@ import Prelude          as X hiding (all, and, any, concat, concatMap, elem,
                               maximum, minimum, notElem, or, product, sequence,
                               sequence, sequence_, sum)
 --------------------------------------------------------------------------------
-
+import System.Locale as X (defaultTimeLocale)
 

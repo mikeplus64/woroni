@@ -1,4 +1,4 @@
-<summary>
+<a href="${summary-href}" class="summary ${summary-sel}">
   <summary-image/>
   <time> <summary-date/> </time>
   <h1> <summary-title/> </h1>
@@ -6,4 +6,4 @@
     <h2> By <summary-authors/> under <summary-tags/> </h2>
     <summary-content/>
   </div>
-</summary>
+</a>

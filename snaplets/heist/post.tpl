@@ -1,17 +1,18 @@
 <post>
 <apply template="default">
   <article>
+
     <time> <post-times/> </time>
     <h1> <page-title/> </h1>
     <h2 class="description">By <post-authors/> under <post-tags/></h2>
     <div style="clear:both;"></div>
 
     <div id="post-content">
-      <post-image/>
       <post-content/>
     </div>
 
     <apply template="thread"/>
+
   </article>
   
   <aside onload="load();">
@@ -19,7 +20,7 @@
       <all-tags/>
     </div>
     <div id="summaries">
-      <post-summaries />
+      <post-aside />
     </div>
     <div style="clear:both;"></div>
   </aside>

@@ -1,7 +1,7 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings #-}
 -- | Summarise HTML things
 --------------------------------------------------------------------------------
-module Woroni.Summarise where
+module Woroni.Backend.Summarise where
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy     as TL

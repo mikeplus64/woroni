@@ -7,12 +7,13 @@
              TypeFamilies #-}
 module Woroni.Backend
   ( Schema(..)
-  , Id(..), Id'
+  , Id(..), Id', fromId
     -- * Main types
   , Post(..)
   , Author(..)
   , Tag(..)
   , Comment(..)
+  , AComment(..)
     -- * Posts queries
   , Article(..)
   , Summary(..)
@@ -38,9 +39,10 @@ module Woroni.Backend
   , setSchema
   , txMode
   , backend
+  , Row(..), Rows(..)
+  , fromRows
+  , fromRow
   ) where
---------------------------------------------------------------------------------
-import qualified Data.Text.Lazy as TL
 --------------------------------------------------------------------------------
 import Hasql
 import Hasql.Backend  hiding (Tx)
@@ -90,7 +92,7 @@ data Post = Post
   { postId      :: {-# UNPACK #-} !Id'
   , postFeature :: !Bool
   , postTitle   :: !Text
-  , postContent :: !TL.Text
+  , postContent :: !Text
   , postCreated :: !UTCTime
   , postUpdated :: !(Maybe UTCTime)
   } deriving (Show,Eq,Generic)
@@ -99,7 +101,7 @@ data Article = Article
   { post         :: !Post
   , postAuthors  :: !(Vector Author)
   , postTags     :: !(Vector Tag)
-  , postComments :: !(Page (Just Post) Comment)
+  , postComments :: !(Page (Just Post) AComment)
   } deriving (Show,Eq)
 
 data Summary = Summary
@@ -109,13 +111,26 @@ data Summary = Summary
   } deriving (Show,Eq,Generic)
 
 data Comment = Comment
-  { commentId      :: {-# UNPACK #-} !Id'
-  , commentLocalId :: {-# UNPACK #-} !Id'
-  , commentParent  :: {-# UNPACK #-} !Id'
-  , commentContent :: !Text
-  , commentCreated :: !UTCTime
-  , commentAuthor  :: !Id'
-  , commentAddress :: !ByteString
+  { commentId       :: {-# UNPACK #-} !Id'
+  , commentLocalId  :: {-# UNPACK #-} !Id'
+  , commentParent   :: {-# UNPACK #-} !Id'
+  , commentContent  :: !Text
+  , commentCreated  :: !UTCTime
+  , commentAuthorId :: !Id'
+  , commentAddress  :: !ByteString
+  } deriving (Show,Eq,Generic)
+
+data AComment = AComment
+  { acommentId       :: {-# UNPACK #-} !Id'
+  , acommentLocalId  :: {-# UNPACK #-} !Id'
+  , acommentParent   :: {-# UNPACK #-} !Id'
+  , acommentContent  :: !Text
+  , acommentCreated  :: !UTCTime
+  , acommentAuthorId :: !Id'
+  , acommentAddress  :: !ByteString
+  , cauthorId        :: {-# UNPACK #-} !Id'
+  , cauthorName      :: !Text
+  , cauthorEmail     :: !(Maybe Text)
   } deriving (Show,Eq,Generic)
 
 data Tag = Tag
@@ -125,7 +140,7 @@ data Tag = Tag
 
 data Author = Author
   { authorId    :: {-# UNPACK #-} !Id'
-  , authorName  :: !(Maybe Text)
+  , authorName  :: !Text
   , authorEmail :: !(Maybe Text)
   } deriving (Show,Eq,Generic)
 
@@ -136,6 +151,7 @@ instance CxRow Postgres Author
 instance CxRow Postgres Tag
 instance ViaFields Post
 instance ViaFields Comment
+instance ViaFields AComment
 instance ViaFields Author
 instance ViaFields Tag
 
@@ -185,7 +201,7 @@ instance Schema Author where
     unitEx [stmt|
       CREATE TABLE IF NOT EXISTS author
       ( id      serial   PRIMARY KEY
-      , name    text
+      , name    text     NOT NULL
       , email   text
       )|]
     unitEx [stmt|INSERT INTO author (id, name, email)
@@ -257,7 +273,7 @@ newPost authors tags feature title content now = do
   pid <- insert Post
     { postId      = fromId defaultId
     , postTitle   = title
-    , postContent = TL.fromStrict (renderMarkdownTrusted content)
+    , postContent = renderMarkdownTrusted content
     , postFeature = feature
     , postCreated = now
     , postUpdated = Nothing
@@ -292,7 +308,6 @@ instance Schema Post where
       CREATE TABLE IF NOT EXISTS post_search
       ( post     int      PRIMARY KEY REFERENCES post(id) ON DELETE CASCADE
       , document tsvector NOT NULL
-      , UNIQUE(post, document)
       )|]
     unitEx [stmt|
       CREATE TABLE IF NOT EXISTS post_to_author
@@ -334,11 +349,13 @@ instance Schema Post where
     -- Note we can't just make Postgres rules for summaries since we need to
     -- render parse the HTML somehow
     unitEx [stmt|
-      CREATE OR REPLACE RULE search_ins AS ON INSERT TO post_original_markdown DO
+      CREATE OR REPLACE RULE search_ins AS ON INSERT
+          TO post_original_markdown DO
         INSERT INTO post_search VALUES(NEW.post, (SELECT post_document(NEW)))|]
 
     unitEx [stmt|
-      CREATE OR REPLACE RULE search_upd AS ON UPDATE TO post_original_markdown DO
+      CREATE OR REPLACE RULE search_upd AS ON UPDATE
+          TO post_original_markdown DO
         UPDATE post_search SET document = (SELECT post_document(NEW))
         WHERE post_search.post = NEW.post |]
 
@@ -348,7 +365,8 @@ instance Schema Post where
     if postId > 0
     then do
       unitEx $
-        [stmt|UPDATE post SET feature = ?, title = ?, content = ?, updated = now()
+        [stmt|UPDATE post
+              SET feature = ?, title = ?, content = ?, updated = now()
               WHERE post.id = ? |]
         postFeature
         postTitle
@@ -356,7 +374,7 @@ instance Schema Post where
         postId
       unitEx $
         [stmt|UPDATE summary SET content = ? WHERE post = ?|]
-        (summarise TL.toStrict postContent)
+        (summarise id postContent)
         postId
       return (Id postId)
     else do
@@ -369,7 +387,7 @@ instance Schema Post where
       unitEx
         ([stmt|INSERT INTO summary VALUES(?, ?)|]
          pid
-         (summarise TL.toStrict postContent))
+         (summarise id postContent))
       return pid
 
 --------------------------------------------------------------------------------
@@ -386,7 +404,7 @@ newComment pid name email content addr now = do
   aid <- case name of
     Just n -> insert Author
       { authorId    = -1
-      , authorName  = Just n
+      , authorName  = n
       , authorEmail = email
       }
     Nothing -> return (Id 0)
@@ -396,7 +414,7 @@ newComment pid name email content addr now = do
     , commentParent  = fromId pid
     , commentContent = renderMarkdown content
     , commentCreated = now
-    , commentAuthor  = fromId aid
+    , commentAuthorId  = fromId aid
     , commentAddress = addr
     }
 
@@ -409,7 +427,7 @@ removeComment cid reason now = do
   mcomment <- maybeEx ([stmt|DELETE FROM comment WHERE id = ? RETURNING *|] cid)
   case mcomment of
     Just Comment{..} -> do
-      unitEx $ [stmt|INSERT INTO comment_deleted VALUES(?, ?, ?, ?, ?, ?) |]
+      unitEx $ [stmt|INSERT INTO deleted_comment VALUES(?, ?, ?, ?, ?, ?) |]
         commentId
         commentLocalId
         commentParent
@@ -448,7 +466,7 @@ instance Schema Comment where
     then fmap (const (Id commentId)) . unitEx $
       [stmt|UPDATE comment SET parent = ?, content = ?, author = ?, address = ?
             WHERE authorId = ?|]
-      commentParent commentContent commentAuthor commentAddress commentId
+      commentParent commentContent commentAuthorId commentAddress commentId
     else
       fmap one . singleEx $
         [stmt|
@@ -461,7 +479,7 @@ instance Schema Comment where
         commentParent
         commentContent
         commentCreated
-        commentAuthor
+        commentAuthorId
         commentAddress
 
   lookupId = maybeEx . [stmt|SELECT * FROM comment WHERE comment.id = ?|]
@@ -470,30 +488,34 @@ instance Schema Comment where
 -- Article
 --------------------------------------------------------------------------------
 
-getArticle :: Id Post -> Tx Postgres s Article
+getArticle :: Id Post -> Tx Postgres s (Maybe Article)
 getArticle pid = do
-  (post,authors,tags,comments) <- singleEx
+  ma <- maybeEx
     ([stmt|
       SELECT
         row(post.*)          "post",
         array_agg(author.*)  "authors",
         array_agg(tag.*)     "tags",
-        array_agg(comment.*) "comments"
+        coalesce (
+         (SELECT array_agg(row(comment.*, author.*))
+          FROM comment JOIN author ON comment.author = author.id
+          WHERE comment.parent = post.id), '{}') "comments"
       FROM post
         JOIN post_to_author ON post_to_author.post = post.id
         JOIN author         ON author.id = post_to_author.author
         JOIN post_to_tag ON post_to_tag.post = post.id
         JOIN tag         ON tag.id = post_to_tag.tag
-        LEFT JOIN (SELECT * FROM comment LIMIT 30) AS comment
-          ON comment.parent = post.id
       WHERE post.id = ?
       GROUP BY post.id |]
-    pid)
-  return $! Article
-    (fromRow post)
-    (fromRows authors)
-    (fromRows tags) $!
-    PageSrc pid 0 (fromRows comments)
+    pid )
+  return $! case ma of
+    Just (post,authors,tags,comments) -> Just $!
+      Article
+        (fromRow post)
+        (fromRows authors)
+        (fromRows tags) $!
+        PageSrc pid 0 (fromRows comments)
+    Nothing -> Nothing
 
 --------------------------------------------------------------------------------
 -- Pages
@@ -529,8 +551,8 @@ instance Pages Nothing Post where
 instance Pages (Just Post) Summary where
   pageAt (JustId (Id pid)) offset size =
     let
-      o2 :: Int32
-      o2 = offset `div` 2
+      s2 :: Int32
+      s2 = size `div` 2
     in vectorEx
       ([stmt|
        SELECT
@@ -548,7 +570,7 @@ instance Pages (Just Post) Summary where
        ORDER BY post.id DESC
        OFFSET ?
        LIMIT ?
-       |] (pid-o2) o2 size)
+       |] (pid-s2) offset size)
 
 instance Pages Nothing Summary where
   pageAt _NoId offset size =
@@ -586,7 +608,6 @@ postsBy authors offset size =
       FROM summary JOIN post ON summary.post = post.id
         JOIN post_to_author ON post_to_author.post = post.id
         JOIN author ON author.id = post_to_author.author AND author.id = ANY(?)
-
         JOIN post_to_tag ON post_to_tag.post = post.id
         JOIN tag         ON tag.id = post_to_tag.tag
       GROUP BY summary.post, post.id

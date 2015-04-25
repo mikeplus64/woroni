@@ -1,5 +1,5 @@
 -- | Render markdown from Text, to Text
-module Woroni.Markdown where
+module Woroni.Backend.Markdown where
 --------------------------------------------------------------------------------
 import qualified Text.Blaze.Html.Renderer.Text as Blaze
 import qualified Text.Sundown.Html.Text        as MD
