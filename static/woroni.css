@@ -64,60 +64,6 @@ nav {
     margin: 0 auto;
 }
 
-aside #summaries .fragment .summary-selected, aside .summary-selected .figure,
-aside .summary-selected time {
-    display: none;
-}
-
-aside .summary {
-    position: relative;
-    overflow: hidden;
-    padding: 0;
-    margin: 0;
-}
-
-aside .summary * {
-    padding: 0;
-    margin: 0;
-    z-index: 1;
-    position: relative;
-}
-
-aside .figure {
-    display: none;
-}
-
-/*
-aside .figure {
-    width: 100%;
-    overflow: hidden;
-    position: absolute;
-    right: 0;
-    top: 0;
-    opacity: 1;
-    background: none;
-}
-
-aside .figure img {
-    opacity: 0.2;
-    background: none;
-}
-
-aside .figure p.caption {
-    display: none;
-}
-*/
-.figure p.caption {
-    display: block;
-    position: absolute;
-    width: 100%;
-    bottom: 0;
-    padding: 0.3em;
-    background-color: rgba(0,0,0,0.7);
-    color: white;
-    overflow: hidden;
-}
-
 #home-summaries .figure p.caption {
     font-size: 0.8em;
 }
@@ -206,7 +152,7 @@ aside {
     background-color: white;
 }
 
-aside .summary, aside .summary-selected {
+#summaries .summary {
     display: block;
     text-decoration: none;
     color: black;
@@ -219,7 +165,7 @@ aside .summary, aside .summary-selected {
     outline: none;
 }
 
-aside .summary:active {
+#summaries .summary:active {
     background-color: #fafafa;
 }
 
@@ -252,14 +198,10 @@ aside h1 { font: italic bold 1em "Georgia"; }
     font-size: 0.8em;
 }
 
-.summary-selected {
+.summary.selected {
     background-color: #efe;
 }
 
-
-.summary-selected .fragment {
-    display: none !important;
-}
 
 #tags {
     margin-bottom: 3px;
@@ -334,11 +276,39 @@ aside h1 { font: italic bold 1em "Georgia"; }
     width: 100%;
 }
 
-#submit-name, #submit-email, #submit-field {
+input {
     font-family: "Georgia";
     border: none;
     background-color: #f9f9f9;
     color: #222;
+}
+
+#search-field {
+    display: block;
+}
+
+#search-field input {
+    font-size: 1em;
+    padding-left: 5px;
+    margin-bottom: 1em;
+    border-top: 1px dotted #ccc;
+    border-bottom: 1px dotted #ccc;
+    width: 100%;
+}
+
+.field-label {
+    font: bold 1.0em "Georgia";
+    padding-top: 1px;
+    padding-bottom: 1px;
+    padding-right: 5px;
+}
+
+.pull-left {
+    float: left;
+}
+
+.pull-right {
+    overflow: hidden;
 }
 
 #submit-name:focus, #submit-email:focus, #submit-field:focus {
