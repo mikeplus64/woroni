@@ -1,13 +1,19 @@
 function verify() {
     document.getElementById('not-a-captcha-placeholder-i-promise-govna').style.display = 'none';
-    document.getElementById('captcha').style.display = 'block';
-    var b0 = document.getElementById('verify');
-    var b1 = document.createElement('input');
-    b1.setAttribute('id','submit');
-    b1.setAttribute('type','submit');
-    b1.setAttribute('value','Submit');
-    document.getElementById('captcha').appendChild(b1);
-    b0.parentNode.removeChild(b0);
+    var verify  = $('#verify');
+    var captcha = $('#captcha');
+    verify.html('Loading');
+
+    $.getScript('https://www.google.com/recaptcha/api.js?onload=add_submit',
+                function () {
+        var submit = document.createElement('input');
+        submit.setAttribute('id','submit');
+        submit.setAttribute('type','submit');
+        submit.setAttribute('value','Submit');
+        captcha.append(submit);
+        verify.remove();
+        $('#captcha').css('display','block');
+    });
 };
 
 function httpGet(theUrl) {
@@ -20,14 +26,13 @@ function httpGet(theUrl) {
 }
 
 var selected = [];
-var asdf;
 
 function set_selected() {
     selected = [];
-    tagIds = $('#tags .selected .tag-id');
+    tagIds = $('#tags .selected');
 
     for(var i = 0; i < tagIds.length; i ++) {
-        var ix = tagIds[i].innerHTML;
+        var ix = tagIds[i].getAttribute("tag-id");
         selected[ix] = ix;
     }
 
@@ -43,21 +48,40 @@ function load() {
 }
 
 function update_aside(elem) {
-    var span = elem.getElementsByClassName('tag-id');
-    var ix   = span[0].innerHTML;
+    console.log('hello');
 
-    console.log(ix);
+    var tagId = elem.getAttribute('tag-id');
     
-    if(selected[ix] != undefined) {
-        delete selected[ix];
+    if(selected[tagId] != undefined) {
+        delete selected[tagId];
         elem.setAttribute('class','tag');
     } else {
-        selected[ix] = ix;
+        selected[tagId] = tagId;
         elem.setAttribute('class','selected');
     }
 
     set_selected();
-    var url = "/tag/" + selected.filter(Number) + '?aside=' + this_post_id;
+    var url = "/tag/"  + selected.filter(Number) +
+              "?page=" + Math.floor(this_post_id/15) +
+              "&post=" + this_post_id;
+    
+
     $('#summaries').html(httpGet(url));
     return false;
+}
+
+function reveal_credit(fig) {
+    console.log('thingy');
+    $("figure").each(function(index) {
+        var fig    = this;
+        var credit = $(fig).find('figcaption.credit');
+
+        credit.css('display', 'none');
+        credit.css('background-color', 'rgba(0,0,0,0.5)');
+        credit.css('opacity', '1.0');
+        credit.html("Image by " + credit.html()) 
+
+        $(fig).hover(function() { credit.fadeIn(150); },
+                     function() { credit.fadeOut(150); });
+    });
 }

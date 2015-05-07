@@ -7,6 +7,7 @@ import Control.Lens           as X hiding (coerce)
 import Control.Monad          as X hiding (forM, forM_, mapM, mapM_, msum,
                                     sequence, sequence_)
 import Control.Monad.IO.Class as X
+import Control.Monad.State    as X (MonadState)
 import Control.Monad.Trans    as X
 --------------------------------------------------------------------------------
 import Data.Coerce as X
@@ -28,7 +29,7 @@ import Data.Foldable    as X
 import Data.Functor     as X
 import Data.Maybe       as X
 import Data.Traversable as X
-import GHC.Generics     as X hiding (from, to)
+import GHC.Generics     as X (Generic)
 import Prelude          as X hiding (all, and, any, concat, concatMap, elem,
                               foldl, foldl1, foldr, foldr1, map, mapM, mapM_,
                               maximum, minimum, notElem, or, product, sequence,

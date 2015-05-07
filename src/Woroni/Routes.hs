@@ -11,25 +11,28 @@ import Snap.Snaplet.ReCaptcha
 import Snap.Util.FileServe
 import Snap.Util.Readable
 --------------------------------------------------------------------------------
-import Woroni.Application
-import Woroni.Backend
-import Woroni.Prelude
+import           Woroni.Application
+import           Woroni.Backend
+import qualified Woroni.Backend.Search as Search
+import           Woroni.Prelude
 --------------------------------------------------------------------------------
 
 idInt :: Int -> Id'
 idInt = (fromIntegral :: Int -> Int32)
 
+id' :: ByteString -> Maybe Id'
+id' = fmap idInt . fromBS
+
 getInt32 :: MonadSnap m => ByteString -> m (Id')
 getInt32 s = fmap idInt . fromBS =<< failIf "No int32" (getParam s)
 
 getInt32s :: MonadSnap m => ByteString -> m [Id']
-getInt32s s = do
-  p <- failIf "No id" (getParam s)
+getInt32s p =
   case B.split ',' p of
     [] -> fail "No id."
     xs -> case mapM (fmap idInt . fromBS) xs of
       Just ids -> return ids
-      Nothing  -> fail "Cannot parse."
+      Nothing  -> fail "Cannot parse int32s."
 
 setPostFromId :: H ()
 setPostFromId = do
@@ -41,41 +44,79 @@ setPostFromId = do
     Just a  -> page .= PostView a ss
     Nothing -> fail "Invalid article."
 
+search :: ByteString -> Int32 -> H ()
+search templ pageN = do
+  terms <- T.decodeUtf8 . maybe "" id <$> getQueryParam "terms"
+  summs <- session $ tx Nothing $ postsSearch (Search.process terms) (pageN*15) 15
+  page .= Search terms Nothing (Page (pageN*1) summs)
+  render templ
+
+tags :: H ()
+tags = do
+  pids  <- failIf "No id" (getParam "id")
+  pages <- getInt32s pids
+
+  pageN <- failIf "Couldn't parse page number" $
+           maybe (Just 0) id' <$> getQueryParam "page"
+
+  post  <- (id' =<<) <$> getQueryParam "post"
+
+  summs <- session $ tx Nothing $
+           tagSearch (maybe (Id maxBound) Id post) pages (pageN*15) 15
+
+  page .= Search (T.decodeUtf8 pids) post (Page (pageN*15) summs)
+  case post of
+    Just _  -> render "aside-search"
+    Nothing -> render "search"
+
+comment :: Int32 -> H ()
+comment pid = do
+  checkCaptcha <|> fail "Invalid captcha response."
+  mname        <- fmap T.decodeUtf8 <$> getPostParam "name"
+  Just content <- fmap T.decodeUtf8 <$> getPostParam "content"
+  memail       <- fmap T.decodeUtf8 <$> getPostParam "email"
+  address <- getsRequest rqRemoteAddr
+  now     <- liftIO getCurrentTime
+  session $ tx txMode $
+    newComment (Id pid) mname memail content address now
+  return ()
+
 routes :: [(ByteString, H ())]
 routes =
-  [ ("/post/:id", method GET $ setPostFromId >> render "post")
-  , ("/search/:page", method GET $ do
-        terms <- T.decodeUtf8 <$> failIf "No terms" (getQueryParam "terms")
-        pageN <- getInt32 "page"
-        summs <- session $ tx Nothing $ postsSearch terms (pageN*15) 15
-        page .= Search terms (Page (pageN*15) summs)
-        render "search"
+  [ ("/post/:id"     , method GET $ setPostFromId >> render "post")
+
+  , ("/search"       , method GET (search "search" 0))
+  , ("/search/:page" , method GET (search "search" =<< getInt32 "page"))
+
+  , ("/quicksearch"       , method GET (search "raw-search" 0))
+  , ("/quicksearch/:page" , method GET (search "raw-search" =<< getInt32 "page"))
+
+  , ("/tag/:id"      , method GET tags)
+  , ("/tag/"         , method GET (return ()))
+
+  , ("/author/:id"   , method GET tags)
+  , ("/author/"      , method GET (return ()))
+
+  , ("/post/:id/", method POST $ do
+        pid <- getInt32 "id"
+        comment pid
+        setPostFromId
+        render "post")
+
+  , ("/feed.xml", method GET $ do
+        summs <- session $ tx Nothing $ pageAt NoId 0 15
+        page .= Search "Home" Nothing (Page 0 summs)
+        writeText "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+        renderAs "application/rss+xml" "feed"
     )
-                  {-
-             <|>  method POST (withCaptcha
-      (writeBS "Bad captcha, sorry!")
-      (do pid  <- getInt32 "id"
-          addr <- getsRequest rqRemoteAddr
-          name <- getPostParam "name"
-          Just content <- fmap decodeUtf8 <$> getPostParam "content"
-          let author = createAuthor
-                       (fmap decodeUtf8 (if name == Just ""
-                                         then Nothing
-                                         else name))
-                       (Inet addr)
-                       Nothing
-          addComment author pid content
-          here <- getsRequest rqPathInfo
-          redirect here))
--}
+
+  , ("/", method GET $ do
+        summs <- session $ tx Nothing $ pageAt NoId 0 15
+        page .= Search "Home" Nothing (Page 0 summs)
+        render "home"
+        )
 
 {-
-  , ("/comment/:id/", do
-        cid     <- getInt32 "id"
-        comment <- failIf "Doesn't exist" (getComment cid)
-        page .= CommentView comment
-        render "comment")
-
   , ("/thread/:id", do
         setPostFromId
         render "thread")

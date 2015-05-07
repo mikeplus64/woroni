@@ -5,7 +5,7 @@
 
 body {
     height: 100%;
-    max-width: 960px;
+    max-width: 1080px;
     min-width: 720px;
     margin: 0 auto;
 }
@@ -50,7 +50,9 @@ nav {
 
 /* Main content */
 
-.figure {
+figure {
+    padding-top: 0px;
+    text-align: center;
     width: 100%;
     position: relative;
     overflow: hidden;
@@ -58,34 +60,69 @@ nav {
     background-color: black;
 }
 
-.figure img {
+figcaption {
+    font: italic 0.9em "Georgia";
+    color: white;
+    padding: 4px;
+}
+
+figure img {
     display: block;
     max-width: 100%;
     margin: 0 auto;
 }
 
-#home-summaries .figure p.caption {
-    font-size: 0.8em;
-}
-
 .credit {
     position: absolute;
-    top: 0;
-    text-align: right;
-    font-style: italic;
-    color: white;
-    opacity: 0.5;
-    text-shadow: 0px 1px black 10px;
+    padding: 3px;
+    top: 0; 
+    right: 0;
+    opacity: 0.8;
 }
 
 #post-content {
     text-align: justify;
-    font: 1em "Georgia";
+    font: 0.9em "Georgia";
+}
+
+.author-info {
+    border-bottom: 1px dashed #ccc;
+    margin-bottom: 8px;
+    background-color: white;
+}
+
+.author-info h2 {
+    border-bottom: 1px solid black;
+    background-color: black;
+    color: white;
+    font: bold italic 1.1em "Georgia";
+    text-align: center;
+    padding-top: 1px;
+}
+
+.author-info img {
+    max-width: 100%;
+}
+
+#authors-info {
+    font: 0.8em "Georgia";
+    float: left;
+    text-align: justify;
+    width: 180px;
+    max-width: 180px;
+    margin-right: 5px;
+    height: 100%;
+}
+
+#authors-info h1 {
+    font: bold 1.0em "Georgia";
+    margin-bottom: 4px;
+    text-align: center;
 }
 
 article {
-    float: left;
-    width: 720px;
+    display: inline-block;
+    width: 680px;
     background-color: white;
     margin-bottom: 200px;
 }
@@ -147,12 +184,13 @@ article blockquote p {
 
 aside {
     float: right;
-    width: 220px;
+    width: 210px;
     margin: 0;
     background-color: white;
 }
 
-#summaries .summary {
+#summaries .summary ,
+#search-summaries .summary {
     display: block;
     text-decoration: none;
     color: black;
@@ -162,14 +200,24 @@ aside {
     padding-bottom: 10px;
     border-bottom: 1px dashed #ccc;
     font-family: "Georgia";
+    background-color: white;
     outline: none;
+    box-shadow: 0px 2px 10px #f4f4f4;
 }
 
 #summaries .summary:active {
     background-color: #fafafa;
 }
 
-#home-summaries .summary {
+#summaries .summary img, #summaries .summary figure, #home-summaries figcaption {
+    display: none;
+}
+
+#home-summaries .summary,
+#search-summaries .summary,
+#misc .little-box {
+    outline: none;
+    background-color: white;
     display: block;
     text-decoration: none;
     color: black;
@@ -177,13 +225,16 @@ aside {
     border-bottom: 1px dashed #ccc;
     margin-bottom: 10px;
     font-family: "Georgia";
-    box-shadow: 0px 2px 10px #f4f4f4;
-    outline: none;
-    width: calc(50% - 25px);
 }
 
-#home-summaries .summary:hover { box-shadow: 0px 4px 40px #eee; }
-#home-summaries .summary:active { background-color: #efe; }
+#home-summaries .summary:hover,
+#search-summaries .summary:hover {
+    box-shadow: 0px 4px 40px #efefef;
+}
+#home-summaries .summary:active,
+#search-summaries .summary:active {
+    background-color: #efe;
+}
 
 aside h1 { font: italic bold 1em "Georgia"; }
 
@@ -199,7 +250,7 @@ aside h1 { font: italic bold 1em "Georgia"; }
 }
 
 .summary.selected {
-    background-color: #efe;
+    background-color: #efe !important;
 }
 
 
@@ -311,11 +362,23 @@ input {
     overflow: hidden;
 }
 
-#submit-name:focus, #submit-email:focus, #submit-field:focus {
-    background-color: #efe;
+#comment-submit input, #comment-submit textarea {
+    box-sizing: border-box;
+    padding: 3px;
+    background-color: #f9f9f9;
+    font-family: "Georgia";
+    color: #222;
 }
 
-#submit-name {
+#comment-submit textarea {
+    border: none;
+    border-top: 1px dotted #ccc;
+    width: 100%;
+}
+
+#comment-submit {
+    width: 100%;
+    overflow: hidden;
 }
 
 #submit-name, #submit-email {
@@ -338,51 +401,58 @@ input {
 .g-recaptcha, .g-captcha div, .g-captcha div div {
     margin: auto;
     width: 304px;
-    height: 78px;
+    padding: 10px;
 }
 
 #submit, #verify {
-    width: 100%;
-    font-weight: bold;
-    font-family: sans-serif;
-    font-size: 0.9em;
-    background-color: black;
-    border: none;
-    float: right;
-    color: #eee;
-    text-align: center;
-    display: block;
+    width: 100% !important;
+    font-weight: bold !important;
+    font-family: sans-serif !important;
+    font-size: 0.9em !important;
+    background-color: black !important;
+    border: none !important;
+    color: #eee !important; 
+    text-align: center !important;
+    display: block !important;
     height: 2em !important;
     line-height: 2em !important;
-    padding: 0;
-    margin: 0;
-}
-
-#not-a-captcha-placeholder-i-promise-govna {
-    width: 100%;
-    height: 108px;
-    display: block;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 #captcha {
-    display: none;
-    background-color: black;
     width: 100%;
-    height: 108px;
+    display: none;
+    background-color: #f9f9f9;
+    border-top: 1px dotted #ccc;
 }
 
 #verify:hover, #submit:hover {
-    background-color: #444;
+    background-color: #444 !important;
     cursor: pointer;
 }
 
-#home-summaries .summary time {
+#home-summaries {
+    background-color: #eee;
+}
+
+#search-summaries, #home-summaries {
+    display: block;
+    margin-bottom: 40px;
+    border-top: 1px dashed #dedede;
+    box-shadow: 0px 0px black 10px;
+    padding-top: 2px;
+}
+
+#home-summaries .summary time,
+#search-summaries .summary time {
     font-weight: bold;
     text-align: center;
     display: block;
 }
 
-#home-summaries .summary h1 {
+#home-summaries .summary h1,
+#search-summaries .summary h1 {
     font: bold italic 1.6em "Georgia";
     border-bottom: 1px dashed #ccc;
     padding-bottom: 2px;
@@ -391,21 +461,102 @@ input {
     margin: 10px;
 }
 
-#home-summaries .summary h2 {
-    font: italic 0.8em "Georgia";
+#home-summaries .summary h2 ,
+#search-summaries .summary h2 {
+    font: italic 0.9em "Georgia";
     text-align: center;
 }
 
-#home-summaries .summary .fragment {
+#home-summaries .summary .fragment,
+#search-summaries .summary fragment {
     clear: both;
     font-size: 1em;
     display: block;
 }
 
-#home-summaries .summary:nth-child(odd) {
-    float: left;
+#search-summaries figure { display: none; }
+
+#features figure {
+    margin-bottom: 4px;
 }
 
-#home-summaries .summary:nth-child(even) {
+#features .summary .fragment {
+    font-size: 0.94em;
+}
+
+
+#features .summary img {
+    width: 100%;
+}
+
+#new {
+    float: left;
+    width: 30%;
+    font-size: 0.8em;
+}
+
+#new figure {
+    float: left;
+    width: 30%;
+    margin: 5px;
+}
+
+#features-heading {
+    font: bold italic 1em "Georgia";
+    color: white;
+}
+
+#features {
+    display: inline-block;
+    background-color: black;
+    box-sizing: border-box;
+    padding: 4px;
+    width: 40%;
+    height: 100%;
+}
+
+#misc {
     float: right;
+    width: 30%;
+    box-sizing: border-box;
+}
+
+#misc h2 {
+    font-size: 1.3em;
+    font: bold italic 1em "Georgia" ;
+}
+
+#misc p {
+    font-size: 0.9em;
+    margin-bottom: 0.5em;
+    text-align: justify;
+}
+
+#player {
+    display: none;
+}
+
+#now-playing, #player {
+    height: 148px;
+    background-image: url("/static/woroni radio.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 160px 160px;
+}
+
+#contributors {
+    width: 100%;
+}
+
+#contributors td:nth-child(odd) {
+    font: italic 0.9em "Georgia";
+}
+
+#contributors td:nth-child(even) {
+    font: bold 0.8em sans-serif;
+}
+
+a {
+    text-decoration: none;
+    color: #23a;
 }

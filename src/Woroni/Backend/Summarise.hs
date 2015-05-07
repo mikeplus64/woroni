@@ -26,7 +26,7 @@ summarise f t =
     Left _     -> takeIsh summarySize (f t)
 
 summarySize :: Int
-summarySize = 140
+summarySize = 200
 
 summaryNode :: Int -> Node -> Node
 summaryNode remSize n = case n of
@@ -47,7 +47,9 @@ takeNodesTo target = go 0
     go consumed _ = traceShow (consumed,target) []
 
     nodeSize (TextNode t)     = T.length t
-    nodeSize (Element _ _ cs) = foldl' (+) 0 (map nodeSize cs)
+    nodeSize (Element t _ cs)
+      | t == "figcaption" = 0
+      | otherwise         = foldl' (+) 0 (map nodeSize cs)
     nodeSize _ = 0
 
 takeIsh :: Int -> Text -> Text

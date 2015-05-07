@@ -30,15 +30,13 @@ module Woroni.Backend
   , Page(..)
   , MaybeId(..)
     -- * Search
-  , postsBy
-  , postsTagged
-  , postsTaggedBy
   , postsSearch
+  , tagSearch
     -- * Utility
   , getPool
   , setSchema
   , txMode
-  , backend
+  , trydb
   , Row(..), Rows(..)
   , fromRows
   , fromRow
@@ -61,7 +59,7 @@ type Id' = Int32
 
 class Schema a where
   lookupId :: Id a -> Tx Postgres s (Maybe a)
-  insert   :: a -> Tx Postgres s (Id a)
+  add   :: a -> Tx Postgres s (Id a)
   schema   :: proxy a -> Tx Postgres s ()
 
 data Page :: Maybe * -> * -> * where
@@ -121,16 +119,17 @@ data Comment = Comment
   } deriving (Show,Eq,Generic)
 
 data AComment = AComment
-  { acommentId       :: {-# UNPACK #-} !Id'
-  , acommentLocalId  :: {-# UNPACK #-} !Id'
-  , acommentParent   :: {-# UNPACK #-} !Id'
-  , acommentContent  :: !Text
-  , acommentCreated  :: !UTCTime
-  , acommentAuthorId :: !Id'
-  , acommentAddress  :: !ByteString
-  , cauthorId        :: {-# UNPACK #-} !Id'
-  , cauthorName      :: !Text
-  , cauthorEmail     :: !(Maybe Text)
+  { acommentId         :: {-# UNPACK #-} !Id'
+  , acommentLocalId    :: {-# UNPACK #-} !Id'
+  , acommentParent     :: {-# UNPACK #-} !Id'
+  , acommentContent    :: !Text
+  , acommentCreated    :: !UTCTime
+  , acommentAuthorId   :: !Id'
+  , acommentAddress    :: !ByteString
+  , cauthorId          :: {-# UNPACK #-} !Id'
+  , cauthorName        :: !Text
+  , cauthorEmail       :: !(Maybe Text)
+  , cauthorDescription :: !(Maybe Text)
   } deriving (Show,Eq,Generic)
 
 data Tag = Tag
@@ -139,9 +138,10 @@ data Tag = Tag
   } deriving (Show,Eq,Generic)
 
 data Author = Author
-  { authorId    :: {-# UNPACK #-} !Id'
-  , authorName  :: !Text
-  , authorEmail :: !(Maybe Text)
+  { authorId          :: {-# UNPACK #-} !Id'
+  , authorName        :: !Text
+  , authorEmail       :: !(Maybe Text)
+  , authorDescription :: !(Maybe Text)
   } deriving (Show,Eq,Generic)
 
 instance CxRow Postgres Post
@@ -188,9 +188,8 @@ instance Schema Tag where
 
   lookupId = maybeEx . [stmt|SELECT * FROM tag WHERE tag.id = ? LIMIT 1|]
 
-  insert (Tag _ n) = fmap one . singleEx $
+  add (Tag _ n) = fmap one . singleEx $
     [stmt|INSERT INTO tag VALUES(default,?) RETURNING id|] n
-
 
 --------------------------------------------------------------------------------
 -- Author
@@ -203,6 +202,7 @@ instance Schema Author where
       ( id      serial   PRIMARY KEY
       , name    text     NOT NULL
       , email   text
+      , description text
       )|]
     unitEx [stmt|INSERT INTO author (id, name, email)
                  SELECT 0, 'Anonymous', NULL
@@ -210,21 +210,26 @@ instance Schema Author where
 
   lookupId = maybeEx . [stmt|SELECT * FROM author WHERE author.id = ? LIMIT 1|]
 
-  insert Author{..} =
+  add Author{..} =
     if authorId > 0
     then Id authorId <$ unitEx updateAuthor
-    else one <$> singleEx insertAuthor
+    else one <$> singleEx addAuthor
    where
-    insertAuthor :: Stmt Postgres
-    insertAuthor =
-      [stmt|INSERT INTO author VALUES(default,?,?) RETURNING id|]
-      authorName authorEmail
+    addAuthor :: Stmt Postgres
+    addAuthor =
+      [stmt|INSERT INTO author VALUES(default,?,?,?) RETURNING id|]
+      authorName
+      authorEmail
+      (renderMarkdownTrusted <$> authorDescription)
 
     updateAuthor :: Stmt Postgres
     updateAuthor =
-      [stmt|UPDATE author SET name = ?, email = ?
+      [stmt|UPDATE author SET name = ?, email = ?, description = ?
             WHERE author.id = ? |]
-      authorName authorEmail authorId
+      authorName
+      authorEmail
+      (renderMarkdownTrusted <$> authorDescription)
+      authorId
 
 --------------------------------------------------------------------------------
 removePost :: Id Post -> Maybe Text -> UTCTime -> Tx Postgres s Bool
@@ -243,22 +248,18 @@ updatePost
   -> Text    -- ^ New Markdown content
   -> UTCTime -- ^ Update date
   -> Tx Postgres s ()
-updatePost pid title content date = do
-  let md = renderMarkdown content
+updatePost pid title content now = do
+  let md = renderMarkdownTrusted content
   unitEx $ [stmt|UPDATE post SET title = ?, content = ?, updated = ?
                  WHERE id = ?|]
     title
     md
-    date
+    now
     pid
-
   unitEx $ [stmt|UPDATE summary SET content = ? WHERE post = ?|]
     (summarise id md)
     pid
-
-  unitEx $ [stmt|UPDATE post_original_markdown SET markdown = ? WHERE post = ?|]
-    content
-    pid
+  unitEx ([stmt|INSERT INTO post_updates VALUES(?,?)|] pid now)
 
 newPost
   :: [Id Author] -- ^ Authors
@@ -266,11 +267,11 @@ newPost
   -> Bool        -- ^ Whether the post is a "feature" or not
   -> Text        -- ^ Title
   -> Text        -- ^ Markdown content
-  -> UTCTime     -- ^ Insert date
+  -> UTCTime     -- ^ Add date
   -> Tx Postgres s (Id Post)
 newPost authors tags feature title content now = do
   when (null tags) (fail "newPost: post must have tags")
-  pid <- insert Post
+  pid <- add Post
     { postId      = fromId defaultId
     , postTitle   = title
     , postContent = renderMarkdownTrusted content
@@ -283,8 +284,7 @@ newPost authors tags feature title content now = do
       [] -> [Id 0] -- add anonymous
       _  -> authors)
   mapM_ (unitEx . [stmt|INSERT INTO post_to_tag    VALUES(?,?)|] pid) tags
-  unitEx $
-    [stmt|INSERT INTO post_original_markdown VALUES(?,?)|] pid content
+  unitEx ([stmt|INSERT INTO post_updates VALUES(?,?)|] pid now)
   return pid
 
 instance Schema Post where
@@ -307,6 +307,8 @@ instance Schema Post where
     unitEx [stmt|
       CREATE TABLE IF NOT EXISTS post_search
       ( post     int      PRIMARY KEY REFERENCES post(id) ON DELETE CASCADE
+      , tags     int[]    NOT NULL
+      , authors  int[]    NOT NULL
       , document tsvector NOT NULL
       )|]
     unitEx [stmt|
@@ -330,38 +332,63 @@ instance Schema Post where
       , reason  text
       )|]
     unitEx [stmt|
-      CREATE OR REPLACE FUNCTION post_document(md post_original_markdown)
+      CREATE TABLE IF NOT EXISTS post_updates
+      ( post    int         REFERENCES post(id) ON DELETE CASCADE
+      , date    timestamptz NOT NULL
+      , UNIQUE(post, date)
+      )|]
+    unitEx [stmt|
+      CREATE OR REPLACE FUNCTION post_document(pid int)
           RETURNS tsvector AS $$
         SELECT to_tsvector('english',
           string_agg(tag.name, ' ') || ' ' ||
           string_agg(author.name, ' ') || ' ' ||
           post.title || ' ' ||
-          md.markdown )
+          post.content )
         FROM post
-          JOIN post_to_author ON post_to_author.post = md.post
+          JOIN post_to_author ON post_to_author.post = pid
           JOIN author         ON author.id = post_to_author.author
-          JOIN post_to_tag ON post_to_tag.post = md.post
+          JOIN post_to_tag ON post_to_tag.post = pid
           JOIN tag         ON tag.id = post_to_tag.tag
-        WHERE post.id = md.post
+        WHERE post.id = pid
         GROUP BY post.id
       $$ LANGUAGE 'sql' STABLE |]
-    -- Search update/insert rules; delete is handled already
-    -- Note we can't just make Postgres rules for summaries since we need to
-    -- render parse the HTML somehow
     unitEx [stmt|
-      CREATE OR REPLACE RULE search_ins AS ON INSERT
-          TO post_original_markdown DO
-        INSERT INTO post_search VALUES(NEW.post, (SELECT post_document(NEW)))|]
-
+      CREATE OR REPLACE RULE post_set_document AS
+        ON INSERT TO post_updates DO
+        INSERT INTO post_search
+        SELECT NEW.post,
+               (SELECT array_agg(tag.id) FROM tag, post_to_tag WHERE
+                 post_to_tag.post = NEW.post AND
+                 post_to_tag.tag = tag.id),
+               (SELECT array_agg(author.id) FROM author, post_to_author WHERE
+                 post_to_author.post = NEW.post AND
+                 post_to_author.author = author.id),
+               post_document(NEW.post)
+        WHERE (NOT EXISTS (SELECT 1 FROM post_search
+                           WHERE post_search.post = NEW.post))
+        |]
     unitEx [stmt|
-      CREATE OR REPLACE RULE search_upd AS ON UPDATE
-          TO post_original_markdown DO
-        UPDATE post_search SET document = (SELECT post_document(NEW))
-        WHERE post_search.post = NEW.post |]
+      CREATE OR REPLACE RULE post_update_document AS
+        ON UPDATE TO post_updates DO
+        UPDATE post_search
+        SET post = NEW.post,
+            tags =
+              (SELECT array_agg(tag.id) FROM tag, post_to_tag WHERE
+                post_to_tag.post = NEW.post AND
+                post_to_tag.tag = tag.id),
+            authors =
+              (SELECT array_agg(author.id) FROM author, post_to_author WHERE
+                post_to_author.post = NEW.post AND
+                post_to_author.author = author.id),
+            document = post_document(NEW.post)
+        WHERE (EXISTS (SELECT 1 FROM post_search
+                       WHERE post_search.post = NEW.post))
+        |]
 
   lookupId = maybeEx . [stmt|SELECT * FROM post WHERE post.id = ? LIMIT 1|]
 
-  insert Post{..} =
+  add Post{..} =
     if postId > 0
     then do
       unitEx $
@@ -402,20 +429,21 @@ newComment
   -> Tx Postgres s (Id Comment)
 newComment pid name email content addr now = do
   aid <- case name of
-    Just n -> insert Author
-      { authorId    = -1
-      , authorName  = n
-      , authorEmail = email
+    Just n -> add Author
+      { authorId          = -1
+      , authorName        = n
+      , authorEmail       = email
+      , authorDescription = Nothing
       }
     Nothing -> return (Id 0)
-  insert $ Comment
-    { commentId      = -1
-    , commentLocalId = -1
-    , commentParent  = fromId pid
-    , commentContent = renderMarkdown content
-    , commentCreated = now
-    , commentAuthorId  = fromId aid
-    , commentAddress = addr
+  add $ Comment
+    { commentId       = -1
+    , commentLocalId  = -1
+    , commentParent   = fromId pid
+    , commentContent  = renderMarkdown content
+    , commentCreated  = now
+    , commentAuthorId = fromId aid
+    , commentAddress  = addr
     }
 
 removeComment
@@ -461,7 +489,7 @@ instance Schema Comment where
       , UNIQUE(parent, local_id)
       ) |]
 
-  insert Comment{..} =
+  add Comment{..} =
     if commentId > 0
     then fmap (const (Id commentId)) . unitEx $
       [stmt|UPDATE comment SET parent = ?, content = ?, author = ?, address = ?
@@ -493,21 +521,24 @@ getArticle pid = do
   ma <- maybeEx
     ([stmt|
       SELECT
-        row(post.*)          "post",
-        array_agg(author.*)  "authors",
-        array_agg(tag.*)     "tags",
+        row(post.*) "post",
         coalesce (
-         (SELECT array_agg(row(comment.*, author.*))
-          FROM comment JOIN author ON comment.author = author.id
-          WHERE comment.parent = post.id), '{}') "comments"
-      FROM post
-        JOIN post_to_author ON post_to_author.post = post.id
-        JOIN author         ON author.id = post_to_author.author
-        JOIN post_to_tag ON post_to_tag.post = post.id
-        JOIN tag         ON tag.id = post_to_tag.tag
-      WHERE post.id = ?
-      GROUP BY post.id |]
-    pid )
+          (SELECT array_agg(author.*) FROM post_to_author
+           JOIN author ON post_to_author.author = author.id
+           WHERE post_to_author.post = post.id),
+          '{}') "authors",
+        coalesce (
+          (SELECT array_agg(tag.*) FROM post_to_tag
+           JOIN tag ON post_to_tag.tag = tag.id
+           WHERE post_to_tag.post = post.id),
+           '{}') "tags",
+        coalesce (
+          (SELECT array_agg(row(comment.*, author.*)) FROM comment
+           JOIN author ON comment.author = author.id
+           AND comment.parent = post.id), '{}') "comments"
+    FROM post
+    WHERE post.id = ?
+    LIMIT 1 |] pid)
   return $! case ma of
     Just (post,authors,tags,comments) -> Just $!
       Article
@@ -558,19 +589,25 @@ instance Pages (Just Post) Summary where
        SELECT
          row(post.id,post.feature,post.title,
              summary.content,post.created,post.updated) "post",
-         array_agg(author.*)  "authors",
-         array_agg(tag.*)     "tags"
+
+        coalesce (
+          (SELECT array_agg(author.*) FROM post_to_author
+           JOIN author ON post_to_author.author = author.id
+           WHERE post_to_author.post = post.id),
+          '{}') "authors",
+
+        coalesce (
+          (SELECT array_agg(tag.*) FROM post_to_tag
+           JOIN tag ON post_to_tag.tag = tag.id
+           WHERE post_to_tag.post = post.id),
+           '{}') "tags"
+
        FROM summary JOIN post ON summary.post = post.id
-         JOIN post_to_author ON post_to_author.post = post.id
-         JOIN author         ON author.id = post_to_author.author
-         JOIN post_to_tag ON post_to_tag.post = post.id
-         JOIN tag         ON tag.id = post_to_tag.tag
-       WHERE post.id >= ?
-       GROUP BY summary.post, post.id
+       WHERE post.id <= ?
        ORDER BY post.id DESC
        OFFSET ?
        LIMIT ?
-       |] (pid-s2) offset size)
+       |] (pid+3) offset size)
 
 instance Pages Nothing Summary where
   pageAt _NoId offset size =
@@ -579,14 +616,20 @@ instance Pages Nothing Summary where
        SELECT
          row(post.id,post.feature,post.title,
              summary.content,post.created,post.updated) "post",
-         array_agg(author.*)  "authors",
-         array_agg(tag.*)     "tags"
+
+         coalesce (
+           (SELECT array_agg(author.*) FROM post_to_author
+            JOIN author ON post_to_author.author = author.id
+            WHERE post_to_author.post = post.id),
+           '{}') "authors",
+
+         coalesce (
+           (SELECT array_agg(tag.*) FROM post_to_tag
+            JOIN tag ON post_to_tag.tag = tag.id
+            WHERE post_to_tag.post = post.id),
+            '{}') "tags"
+
        FROM summary JOIN post ON summary.post = post.id
-         JOIN post_to_author ON post_to_author.post = post.id
-         JOIN author         ON author.id = post_to_author.author
-         JOIN post_to_tag ON post_to_tag.post = post.id
-         JOIN tag         ON tag.id = post_to_tag.tag
-       GROUP BY summary.post, post.id
        ORDER BY post.id DESC
        OFFSET ?
        LIMIT ?
@@ -595,82 +638,6 @@ instance Pages Nothing Summary where
 --------------------------------------------------------------------------------
 -- Search
 --------------------------------------------------------------------------------
-
-postsBy :: [Id Author] -> Int32 -> Int32 -> Tx Postgres s (Vector Summary)
-postsBy authors offset size =
-  vectorEx $
-    [stmt|
-      SELECT
-        row(post.id,post.feature,post.title,
-            summary.content,post.created,post.updated) "post",
-        array_agg(author.*)  "authors",
-        array_agg(tag.*)     "tags"
-      FROM summary JOIN post ON summary.post = post.id
-        JOIN post_to_author ON post_to_author.post = post.id
-        JOIN author ON author.id = post_to_author.author AND author.id = ANY(?)
-        JOIN post_to_tag ON post_to_tag.post = post.id
-        JOIN tag         ON tag.id = post_to_tag.tag
-      GROUP BY summary.post, post.id
-      ORDER BY post.id DESC
-      OFFSET ?
-      LIMIT ? |]
-    (coerce authors :: [Int32])
-    offset
-    size
-
-postsTagged :: [Id Tag] -> Int32 -> Int32 -> Tx Postgres s (Vector Summary)
-postsTagged tags offset size =
-  vectorEx $
-    [stmt|
-      SELECT
-        row(post.id,post.feature,post.title,
-            summary.content,post.created,post.updated) "post",
-        array_agg(author.*)  "authors",
-        array_agg(tag.*)     "tags"
-      FROM summary JOIN post ON summary.post = post.id
-        JOIN post_to_tag ON post_to_tag.post = post.id
-        JOIN tag         ON tag.id = post_to_tag.tag AND tag.id = ANY(?)
-        JOIN post_to_author ON post_to_author.post = post.id
-        JOIN author         ON author.id = post_to_author.author
-      ORDER BY post.id DESC
-      OFFSET ?
-      LIMIT ? |]
-    (coerce tags :: [Int32])
-    offset
-    size
-
-postsTaggedBy
-  :: [Id Author]
-  -> [Id Tag]
-  -> Int32
-  -> Int32
-  -> Tx Postgres s (Vector Summary)
-postsTaggedBy authors tags offset size =
-  let na = null authors
-      nt = null tags
-  in if
-    | na && nt  -> pageAt NoId offset size
-    | na        -> postsTagged tags offset size
-    | nt        -> postsBy authors offset size
-    | otherwise -> vectorEx $ [stmt|
-        SELECT
-          row(post.id,post.feature,post.title,
-              summary.content,post.created,post.updated) "post",
-          array_agg(author.*)  "authors",
-          array_agg(tag.*)     "tags"
-        FROM summary JOIN post ON summary.post = post.id
-          JOIN post_to_tag ON post_to_tag.post = post.id
-          JOIN tag         ON tag.id = post_to_tag.tag AND tag.id = ANY(?)
-          JOIN post_to_author ON post_to_author.post = post.id
-          JOIN author ON author.id = post_to_author.author
-                     AND author.id = ANY(?)
-        ORDER BY post.id DESC
-        OFFSET ?
-        LIMIT ? |]
-      (coerce tags :: [Int32])
-      (coerce authors :: [Int32])
-      offset
-      size
 
 postsSearch
   :: Text
@@ -686,21 +653,60 @@ postsSearch terms offset size =
                       'HighlightAll=true,FragmentDelimiter=""'),
           post.created,
           post.updated) "post",
-      array_agg(author.*) "authors",
-      array_agg(tag.*)    "tags"
+      coalesce (
+        (SELECT array_agg(author.*) FROM post_to_author
+         JOIN author ON post_to_author.author = author.id
+         WHERE post_to_author.post = post.id),
+        '{}') "authors",
+      coalesce (
+        (SELECT array_agg(tag.*) FROM post_to_tag
+         JOIN tag ON post_to_tag.tag = tag.id
+         WHERE post_to_tag.post = post.id),
+        '{}') "tags"
     FROM post_search
       JOIN summary ON summary.post = post_search.post
       JOIN post    ON post.id      = post_search.post
-      JOIN post_to_tag ON post_to_tag.post = post.id
-      JOIN tag         ON tag.id           = post_to_tag.tag
-      JOIN post_to_author ON post_to_author.post = post.id
-      JOIN author         ON author.id           = post_to_author.author
     WHERE post_search.document @@ to_tsquery('english',?)
     GROUP BY post.id, summary.post
     ORDER BY post.id DESC
     OFFSET ?
     LIMIT ? |]
     terms
+    terms
+    offset
+    size
+
+tagSearch
+  :: Id Post
+  -> [Int32]
+  -> Int32
+  -> Int32
+  -> Tx Postgres s (Vector Summary)
+tagSearch (Id pid) terms offset size = do
+  vectorEx $ [stmt|
+    SELECT
+      row(post.id, post.feature, post.title,
+          summary.content, post.created, post.updated) "post",
+      coalesce (
+        (SELECT array_agg(author.*) FROM post_to_author
+         JOIN author ON post_to_author.author = author.id
+         WHERE post_to_author.post = post.id),
+        '{}') "authors",
+      coalesce (
+        (SELECT array_agg(tag.*) FROM post_to_tag
+         JOIN tag ON post_to_tag.tag = tag.id
+         WHERE post_to_tag.post = post.id),
+        '{}') "tags"
+    FROM post
+      JOIN summary     ON summary.post     = post.id
+      JOIN post_to_tag ON post_to_tag.post = post.id
+      JOIN tag         ON post_to_tag.tag  = tag.id
+    WHERE post.id <= ? AND ARRAY[tag.id] <@ ?
+    GROUP BY post.id, summary.post
+    ORDER BY post.id DESC
+    OFFSET ?
+    LIMIT ? |]
+    (let p3 = pid+3 in max pid p3)
     terms
     offset
     size
@@ -733,8 +739,8 @@ setSchema = do
   create Post
   create Comment
 
-backend :: Pool Postgres -> (forall s. Tx Postgres s a) -> IO (Maybe a)
-backend db t = do
+trydb :: Pool Postgres -> (forall s. Tx Postgres s a) -> IO (Maybe a)
+trydb db t = do
   e <- session db (tx txMode t)
   case e of
     Right a -> return (Just a)

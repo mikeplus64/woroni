@@ -1,4 +1,4 @@
-<a href="${summary-href}" class="summary ${summary-sel}">
+<a href="/post/${summary-id}" class="summary ${summary-sel}">
   <summary-image/>
   <time> <summary-date/> </time>
   <h1> <summary-title/> </h1>

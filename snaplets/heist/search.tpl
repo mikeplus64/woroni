@@ -1,13 +1,22 @@
 <bind tag="page-title"> Woroni Search - <search-title/> </bind>
 <apply template="default">
-  <form id="search-field">
-    <div class="pull-left field-label">Search</div>
-    <div class="pull-right field">
-      <input type="text" name="terms" placeholder="Search terms" search-terms>
+  <div id="search">
+    <script type="text/javascript" src="/static/search.js"></script>
+    <form onsubmit="update_search(); return false;" method="GET"
+          id="search-field">
+      <div class="pull-right field">
+        <input id="search-text"
+               type="text"
+               name="terms"
+               onkeypress="updated = true;"
+               placeholder="Search terms"
+               value="${search-title}">
+      </div>
+    </form>
+    <div style="clear:both;"></div>
+    <div id="search-summaries">
+      <post-summaries/>
+      <div style="clear:both"></div>
     </div>
-  </form>
-  <div style="clear:both;"></div>
-  <div id="home-summaries">
-    <post-summaries/>
   </div>
 </apply>

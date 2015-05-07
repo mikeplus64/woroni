@@ -1,5 +1,12 @@
 <post>
 <apply template="default">
+
+  <div id="authors-info">
+    <h1>About the author<authors-plural/></h1>
+    <authors-info/>
+    <script src="/static/authors-info.js"></script>
+  </div>
+
   <article>
 
     <time> <post-times/> </time>
@@ -10,6 +17,8 @@
     <div id="post-content">
       <post-content/>
     </div>
+
+    <script>console.log('reveal_credit()'); reveal_credit();</script>
 
     <apply template="thread"/>
 

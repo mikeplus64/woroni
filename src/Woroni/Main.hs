@@ -1,15 +1,12 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, RecordWildCards #-}
 module Main where
 --------------------------------------------------------------------------------
 import Snap
-import Snap.Snaplet.Auth                           hiding (session)
 import Snap.Snaplet.Hasql
 import Snap.Snaplet.Heist.Compiled
 import Snap.Snaplet.ReCaptcha
-import Snap.Snaplet.Session.Backends.CookieSession
-import Snap.Snaplet.Session.SessionManager
-import Snap.Util.FileServe
-import Snap.Util.Readable
+--------------------------------------------------------------------------------
+import Control.Monad.State
 --------------------------------------------------------------------------------
 import Hasql.Postgres
 --------------------------------------------------------------------------------
@@ -27,9 +24,43 @@ makeWoroni = makeSnaplet "woroni" "The Woroni website" Nothing $ do
     (fromJust (poolSettings 8 10))
   _heist    <- nestSnaplet "heist"    heist  $ heistInit ""
   _captcha  <- nestSnaplet "captcha" captcha $ initReCaptcha (Just _heist)
+
+  v <- liftIO $! trydb (_postgres^.snapletValue) setSchema
+  case v of
+    Just _ -> return ()
+    _      -> void . liftIO $ trydb (_postgres^.snapletValue) $
+              unitEx [stmt|CREATE INDEX post_search_doc ON post_search
+                           USING gin(document) |]
+
+  tags' <- liftIO . fmap fromJust $! trydb (_postgres^.snapletValue) $
+    vectorEx [stmt|SELECT * FROM tag|]
+
+  authors' <- liftIO . fmap fromJust $! trydb (_postgres^.snapletValue) $
+    vectorEx [stmt|SELECT * FROM author|]
+
+  tagsRef    <- liftIO (newIORef tags')
+  authorsRef <- liftIO (newIORef authors')
+
   addConfig _heist templates
   addRoutes routes
-  return Woroni{ _page = Home, .. }
+  return Woroni
+    { _page       = Home
+    , _allTags    = tagsRef
+    , _allAuthors = authorsRef
+    , ..
+    }
+
+updateAllTags :: Woroni -> IO ()
+updateAllTags s = do
+  Just tags' <- trydb (s^.postgres.snapletValue) $
+                vectorEx [stmt|SELECT * FROM tag|]
+  liftIO $! writeIORef (_allTags s) tags'
+
+updateAllAuthors :: Woroni -> IO ()
+updateAllAuthors s = do
+  Just authors' <- trydb (s^.postgres.snapletValue) $
+                vectorEx [stmt|SELECT * FROM tag|]
+  liftIO $! writeIORef (_allAuthors s) authors'
 
 main :: IO ()
 main = serveSnaplet mempty makeWoroni
